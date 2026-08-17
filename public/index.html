@@ -3,38 +3,53 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MoneyFlow Tracker</title>
+<title>MoneyFlow Tracker — Personal Finance Dashboard</title>
+<meta name="description" content="Track your income and expenses with MoneyFlow. Manage accounts, categories, budgets, and visualize your spending trends.">
 <link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
-<nav>
+<nav id="main-nav">
   <div class="logo">₹ MoneyFlow</div>
   <div class="nav-tabs">
-    <button class="tab on" id="t-home" onclick="go('home')">Home</button>
-    <button class="tab"    id="t-dash" onclick="go('dash')">Dashboard</button>
-    <button class="tab"    id="t-budgets" onclick="go('budgets')">Budgets</button>
-    <button class="tab"    id="t-manage" onclick="go('manage')">Manage</button>
+    <button class="tab on" id="t-home"    onclick="go('home')">🏠 Home</button>
+    <button class="tab"    id="t-dash"    onclick="go('dash')">📊 Dashboard</button>
+    <button class="tab"    id="t-charts"  onclick="go('charts')">📈 Charts</button>
+    <button class="tab"    id="t-budgets" onclick="go('budgets')">🎯 Budgets</button>
+    <button class="tab"    id="t-manage"  onclick="go('manage')">⚙️ Manage</button>
   </div>
   <div class="nav-actions">
     <div class="bal-pill" id="nav-bal" style="color:var(--green)">₹0.00</div>
-    <button class="calc-btn" onclick="toggleCalculator()" title="Calculator">🧮</button>
-    <button class="theme-toggle" onclick="toggleTheme()">₹</button>
-        <button class="logout-btn" onclick="logout()">Logout</button>
+    <div class="user-pill" id="nav-user" title="Logged in user">👤</div>
+    <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme" id="theme-btn">🌙</button>
+    <button class="logout-btn" onclick="logout()">Sign Out</button>
   </div>
 </nav>
 
-<!-- HOME -->
+<!-- MOBILE BOTTOM NAV -->
+<nav class="mobile-nav">
+  <button class="mob-tab on" id="m-home"    onclick="go('home')">🏠<span>Home</span></button>
+  <button class="mob-tab"    id="m-dash"    onclick="go('dash')">📊<span>Dash</span></button>
+  <button class="mob-tab"    id="m-charts"  onclick="go('charts')">📈<span>Charts</span></button>
+  <button class="mob-tab"    id="m-budgets" onclick="go('budgets')">🎯<span>Budget</span></button>
+  <button class="mob-tab"    id="m-manage"  onclick="go('manage')">⚙️<span>Manage</span></button>
+</nav>
+
+<!-- GLOBAL LOADING OVERLAY -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+</div>
+
+<!-- ═══════════════ HOME ═══════════════ -->
 <div class="page on" id="pg-home">
   <div class="home-wrap">
     <div class="home-heading">Track your <span>money.</span></div>
     <div class="home-sub">Log a transaction below &nbsp;·&nbsp;
-      <button onclick="go('dash')">View Dashboard ₹</button>
+      <button onclick="go('dash')">View Dashboard →</button>
     </div>
     <div class="form-card">
-      <div class="form-title">
-        <span>NEW ENTRY</span>
-      </div>
+      <div class="form-title"><span>NEW ENTRY</span></div>
       <div class="row2">
         <div class="fld">
           <label for="f-date">Date</label>
@@ -59,45 +74,48 @@
       </div>
       <div class="fld">
         <label for="f-reason">Reason / Description</label>
-        <input type="text" id="f-reason" placeholder="e.g. Groceries, Salary, Rent₹">
+        <input type="text" id="f-reason" placeholder="e.g. Groceries, Salary, Rent">
       </div>
       <div class="fld"><label>Type</label></div>
       <div class="type-row">
         <div class="topt out" id="tp-out" onclick="pickType('out')">
-          <em>₹</em>
+          <em>💸</em>
           <span>SPENT</span>
         </div>
-        <div class="topt"     id="tp-in"  onclick="pickType('in')">
-          <em></em>
+        <div class="topt" id="tp-in" onclick="pickType('in')">
+          <em>💰</em>
           <span>RECEIVED</span>
         </div>
       </div>
-      <button class="btn-add" onclick="addEntry()">
+      <button class="btn-add" id="btn-add-entry" onclick="addEntry()">
         <span>Add Entry</span>
       </button>
     </div>
+
+    <!-- Recent transactions on home page -->
+    <div class="home-recent" id="home-recent"></div>
   </div>
 </div>
 
-<!-- DASHBOARD -->
+<!-- ═══════════════ DASHBOARD ═══════════════ -->
 <div class="page" id="pg-dash">
   <div class="dash">
-    <div class="sec-title">
-      <span>Accounts</span>
+    <div class="sec-title"><span>Accounts</span></div>
+    <div class="acc-grid" id="acc-grid">
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card"></div>
     </div>
-    <div class="acc-grid" id="acc-grid"></div>
-    
-    <div class="sec-title">
-      <span>Quick Stats</span>
-    </div>
+
+    <div class="sec-title"><span>Quick Stats</span></div>
     <div class="sum-bar">
       <div class="sum-item">
         <label>Money In</label>
-        <strong style="color:var(--a3)" id="s-in">₹0.00</strong>
+        <strong style="color:var(--green)" id="s-in">₹0.00</strong>
       </div>
       <div class="sum-item">
         <label>Total Spent</label>
-        <strong style="color:var(--a2)" id="s-out">₹0.00</strong>
+        <strong style="color:var(--red)" id="s-out">₹0.00</strong>
       </div>
       <div class="sum-item">
         <label>Net Balance</label>
@@ -108,20 +126,26 @@
         <strong style="color:var(--text)" id="s-cnt">0</strong>
       </div>
     </div>
-    
-    <div class="sec-title">
-      <span>Transaction Log</span>
-    </div>
+
+    <div class="sec-title"><span>Transaction Log</span></div>
     <div class="tbl-wrap">
       <div class="tbl-top">
         <div class="filter-row">
-          <input class="srch" id="srch" oninput="drawTable()" placeholder="Search transactions">
+          <input class="srch" id="srch" oninput="drawTable()" placeholder="🔍 Search transactions…">
           <select class="cat-filter" id="cat-filter" onchange="drawTable()">
             <option value="">All Categories</option>
           </select>
-          <button class="fbtn on" onclick="filt('all',this)">All</button>
+          <select class="cat-filter" id="date-range-filter" onchange="applyDateRangeFilter()">
+            <option value="all">All Time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 3 months</option>
+            <option value="180">Last 6 months</option>
+            <option value="365">Last Year</option>
+          </select>
+          <button class="fbtn on" id="filt-all" onclick="filt('all',this)">All</button>
           <span id="filt-btns"></span>
-          <button class="fbtn" onclick="showExportModal()">₹ Export</button>
+          <button class="fbtn export-btn" onclick="showExportModal()">⬇️ Export</button>
         </div>
       </div>
       <div style="overflow-x:auto">
@@ -136,51 +160,98 @@
         </table>
       </div>
       <div class="empty" id="empty">
-        <div class="ico">₹</div>
-        <div>No entries yet ₹ go to <strong>Home</strong> to add one!</div>
+        <div class="ico">📭</div>
+        <div>No entries found — go to <strong>Home</strong> to add one!</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- BUDGETS -->
+<!-- ═══════════════ CHARTS ═══════════════ -->
+<div class="page" id="pg-charts">
+  <div class="dash">
+    <div class="sec-title">
+      <span>Spending Trends</span>
+      <div class="chart-controls">
+        <select id="chart-period" onchange="loadCharts()">
+          <option value="monthly">Monthly</option>
+          <option value="weekly">Weekly</option>
+          <option value="daily">Daily</option>
+        </select>
+        <select id="chart-months" onchange="loadCharts()">
+          <option value="3">Last 3 months</option>
+          <option value="6" selected>Last 6 months</option>
+          <option value="12">Last 12 months</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="chart-card" id="trend-chart-card">
+      <div class="chart-card-title">💹 Income vs Spending</div>
+      <div class="chart-wrapper">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-card-title">🍕 Spending by Category</div>
+        <div class="chart-wrapper chart-donut-wrapper">
+          <canvas id="categoryChart"></canvas>
+        </div>
+        <div class="chart-legend" id="category-legend"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">📊 Monthly Net Balance</div>
+        <div class="chart-wrapper">
+          <canvas id="netChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-insights" id="chart-insights"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ BUDGETS ═══════════════ -->
 <div class="page" id="pg-budgets">
   <div class="dash">
     <div class="sec-title" style="display: flex; justify-content: space-between; align-items: center;">
       <span>Monthly Budgets</span>
-      <button class="btn-add" onclick="showAddBudgetModal()">+ Set Budget</button>
+      <button class="btn-add budget-add-btn" onclick="showAddBudgetModal()">+ Set Budget</button>
     </div>
-    <div class="acc-grid" id="budget-grid"></div>
+    <div id="budget-grid" class="acc-grid">
+      <div class="budget-empty">
+        <div class="ico">🎯</div>
+        <div>No budgets set yet.<br>Click <strong>+ Set Budget</strong> to start tracking.</div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- MANAGE -->
+<!-- ═══════════════ MANAGE ═══════════════ -->
 <div class="page" id="pg-manage">
   <div class="dash">
     <div class="manage-layout">
-      <!-- Left Side - Accounts -->
+      <!-- Accounts -->
       <div class="manage-section">
-        <div class="sec-title">
-          <span>Manage Accounts</span>
-        </div>
+        <div class="sec-title"><span>Manage Accounts</span></div>
         <div class="manage-card">
           <div class="manage-header">
             <h3>Account Types</h3>
-            <button class="btn-add" onclick="showAddAccountModal()">+ Add Account</button>
+            <button class="btn-add" onclick="showAddAccountModal()" style="width:auto;padding:10px 20px;font-size:.85rem">+ Add Account</button>
           </div>
           <div class="manage-list" id="accounts-list"></div>
         </div>
       </div>
-      
-      <!-- Right Side - Categories -->
+
+      <!-- Categories -->
       <div class="manage-section">
-        <div class="sec-title">
-          <span>Manage Categories</span>
-        </div>
+        <div class="sec-title"><span>Manage Categories</span></div>
         <div class="manage-card">
           <div class="manage-header">
             <h3>Categories</h3>
-            <button class="btn-add" onclick="showAddCategoryModal()">+ Add Category</button>
+            <button class="btn-add" onclick="showAddCategoryModal()" style="width:auto;padding:10px 20px;font-size:.85rem">+ Add Category</button>
           </div>
           <div class="manage-list" id="categories-list"></div>
         </div>
@@ -189,57 +260,62 @@
   </div>
 </div>
 
-<!-- MODALS -->
+<!-- ═══════════════ MODALS ═══════════════ -->
+
+<!-- Calculator Modal -->
 <div class="modal" id="calculator-modal">
   <div class="modal-content calc-modal">
     <div class="modal-header">
-      <h3>Calculator</h3>
+      <h3>🧮 Calculator</h3>
       <button class="modal-close" onclick="toggleCalculator()">×</button>
     </div>
     <div class="modal-body">
       <div class="calc-display">
+        <div class="calc-expression" id="calc-expression"></div>
         <input type="text" id="calc-display" readonly value="0">
       </div>
       <div class="calc-buttons">
         <div class="calc-row">
+          <button class="calc-btn calc-clear" onclick="clearCalc()">C</button>
+          <button class="calc-btn calc-backspace" onclick="backspaceCalc()">⌫</button>
+          <button class="calc-btn calc-percent" onclick="setPercent()">%</button>
+          <button class="calc-btn calc-op" onclick="setOperation('/')">÷</button>
+        </div>
+        <div class="calc-row">
           <button class="calc-btn" onclick="appendToCalc('7')">7</button>
           <button class="calc-btn" onclick="appendToCalc('8')">8</button>
           <button class="calc-btn" onclick="appendToCalc('9')">9</button>
-          <button class="calc-btn calc-op" onclick="setOperation('/')">/</button>
+          <button class="calc-btn calc-op" onclick="setOperation('*')">×</button>
         </div>
         <div class="calc-row">
           <button class="calc-btn" onclick="appendToCalc('4')">4</button>
           <button class="calc-btn" onclick="appendToCalc('5')">5</button>
           <button class="calc-btn" onclick="appendToCalc('6')">6</button>
-          <button class="calc-btn calc-op" onclick="setOperation('*')">×</button>
+          <button class="calc-btn calc-op" onclick="setOperation('-')">−</button>
         </div>
         <div class="calc-row">
           <button class="calc-btn" onclick="appendToCalc('1')">1</button>
           <button class="calc-btn" onclick="appendToCalc('2')">2</button>
           <button class="calc-btn" onclick="appendToCalc('3')">3</button>
-          <button class="calc-btn calc-op" onclick="setOperation('-')">-</button>
-        </div>
-        <div class="calc-row">
-          <button class="calc-btn" onclick="appendToCalc('0')">0</button>
-          <button class="calc-btn" onclick="appendToCalc('.')">.</button>
-          <button class="calc-btn calc-equals" onclick="calculate()">=</button>
           <button class="calc-btn calc-op" onclick="setOperation('+')">+</button>
         </div>
         <div class="calc-row">
-          <button class="calc-btn calc-clear" onclick="clearCalc()">C</button>
-          <button class="calc-btn calc-backspace" onclick="backspaceCalc()">←</button>
-          <button class="calc-btn calc-percent" onclick="setPercent()">%</button>
           <button class="calc-btn calc-plusminus" onclick="togglePlusMinus()">±</button>
+          <button class="calc-btn" onclick="appendToCalc('0')">0</button>
+          <button class="calc-btn" onclick="appendToCalc('.')">.</button>
+          <button class="calc-btn calc-equals" onclick="calculate()">=</button>
         </div>
       </div>
+      <button class="calc-use-btn" onclick="useCalcResult()" title="Use result in amount field">⬆️ Use in Amount</button>
     </div>
   </div>
 </div>
 
+<!-- Export Modal -->
 <div class="modal" id="export-modal">
   <div class="modal-content">
     <div class="modal-header">
-      <h3>Export Transactions</h3>
+      <h3>⬇️ Export Transactions</h3>
       <button class="modal-close" onclick="closeExportModal()">×</button>
     </div>
     <div class="modal-body">
@@ -256,11 +332,7 @@
         <div class="format-options">
           <label class="radio-label">
             <input type="radio" name="export-format" value="csv" checked>
-            <span>Excel (CSV)</span>
-          </label>
-          <label class="radio-label">
-            <input type="radio" name="export-format" value="pdf">
-            <span>PDF</span>
+            <span>📊 Excel (CSV)</span>
           </label>
         </div>
       </div>
@@ -272,6 +344,7 @@
   </div>
 </div>
 
+<!-- Account Modal -->
 <div class="modal" id="account-modal">
   <div class="modal-content">
     <div class="modal-header">
@@ -291,6 +364,7 @@
   </div>
 </div>
 
+<!-- Category Modal -->
 <div class="modal" id="category-modal">
   <div class="modal-content">
     <div class="modal-header">
@@ -308,8 +382,8 @@
           <input type="color" id="category-color" value="#7c6af7">
         </div>
         <div class="fld">
-          <label for="category-icon">Icon</label>
-          <input type="text" id="category-icon" placeholder="e.g. 🍔, 🚗, 🛒" maxlength="2">
+          <label for="category-icon">Icon (emoji)</label>
+          <input type="text" id="category-icon" placeholder="🍔" maxlength="2">
         </div>
       </div>
     </div>
@@ -320,6 +394,7 @@
   </div>
 </div>
 
+<!-- Budget Modal -->
 <div class="modal" id="budget-modal">
   <div class="modal-content">
     <div class="modal-header">
@@ -332,7 +407,7 @@
         <select id="budget-category"></select>
       </div>
       <div class="fld">
-        <label for="budget-amount">Amount (₹)</label>
+        <label for="budget-amount">Monthly Amount (₹)</label>
         <input type="number" id="budget-amount" placeholder="0.00" min="0" step="0.01">
       </div>
     </div>
@@ -343,13 +418,12 @@
   </div>
 </div>
 
+<!-- Toast notification -->
 <div class="toast" id="toast"></div>
 
-<!-- Floating Calculator Widget -->
-<div class="floating-calculator" id="floating-calculator" style="display: none;">
-  <div class="calc-toggle" onclick="toggleFloatingCalculator()" title="Calculator">
-    <span>+</span>
-  </div>
+<!-- Floating Calculator -->
+<div class="floating-calculator" id="floating-calculator" style="display:none;">
+  <div class="calc-toggle" onclick="toggleFloatingCalculator()" title="Calculator">🧮</div>
   <div class="calc-body" id="calc-body">
     <div class="calc-header">
       <span>Calculator</span>
@@ -360,34 +434,34 @@
     </div>
     <div class="calc-buttons">
       <div class="calc-row">
+        <button class="calc-btn calc-clear"     onclick="clearFloatingCalc()">C</button>
+        <button class="calc-btn calc-backspace"  onclick="backspaceFloatingCalc()">⌫</button>
+        <button class="calc-btn calc-percent"    onclick="setFloatingPercent()">%</button>
+        <button class="calc-btn calc-op"         onclick="setFloatingOperation('/')">÷</button>
+      </div>
+      <div class="calc-row">
         <button class="calc-btn" onclick="appendToFloatingCalc('7')">7</button>
         <button class="calc-btn" onclick="appendToFloatingCalc('8')">8</button>
         <button class="calc-btn" onclick="appendToFloatingCalc('9')">9</button>
-        <button class="calc-btn calc-op" onclick="setFloatingOperation('/')">/</button>
+        <button class="calc-btn calc-op" onclick="setFloatingOperation('*')">×</button>
       </div>
       <div class="calc-row">
         <button class="calc-btn" onclick="appendToFloatingCalc('4')">4</button>
         <button class="calc-btn" onclick="appendToFloatingCalc('5')">5</button>
         <button class="calc-btn" onclick="appendToFloatingCalc('6')">6</button>
-        <button class="calc-btn calc-op" onclick="setFloatingOperation('*')">×</button>
+        <button class="calc-btn calc-op" onclick="setFloatingOperation('-')">−</button>
       </div>
       <div class="calc-row">
         <button class="calc-btn" onclick="appendToFloatingCalc('1')">1</button>
         <button class="calc-btn" onclick="appendToFloatingCalc('2')">2</button>
         <button class="calc-btn" onclick="appendToFloatingCalc('3')">3</button>
-        <button class="calc-btn calc-op" onclick="setFloatingOperation('-')">-</button>
-      </div>
-      <div class="calc-row">
-        <button class="calc-btn" onclick="appendToFloatingCalc('0')">0</button>
-        <button class="calc-btn" onclick="appendToFloatingCalc('.')">.</button>
-        <button class="calc-btn calc-equals" onclick="calculateFloating()">=</button>
         <button class="calc-btn calc-op" onclick="setFloatingOperation('+')">+</button>
       </div>
       <div class="calc-row">
-        <button class="calc-btn calc-clear" onclick="clearFloatingCalc()">C</button>
-        <button class="calc-btn calc-backspace" onclick="backspaceFloatingCalc()">×</button>
-        <button class="calc-btn calc-percent" onclick="setFloatingPercent()">%</button>
         <button class="calc-btn calc-plusminus" onclick="toggleFloatingPlusMinus()">±</button>
+        <button class="calc-btn" onclick="appendToFloatingCalc('0')">0</button>
+        <button class="calc-btn" onclick="appendToFloatingCalc('.')">.</button>
+        <button class="calc-btn calc-equals" onclick="calculateFloating()">=</button>
       </div>
     </div>
   </div>

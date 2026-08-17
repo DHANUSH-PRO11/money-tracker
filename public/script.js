@@ -1,47 +1,60 @@
+/* ═══════════════════════════════════════════════════════════
+   MoneyFlow Tracker — Frontend Script
+   Full rewrite: fixed fmt(), theme toggle, Charts tab,
+   date-range filter, loading states, user greeting
+═══════════════════════════════════════════════════════════ */
+
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const API_BASE = window.location.origin + '/api';
 
-let accounts = [];
-let txns = [];
-let budgets = [];
-let curFilter = 'all';
-let curType = 'out';
-let charts = {};
-let activePage = localStorage.getItem('activePage') || 'home';
-let pageScrollPositions = {};
+let accounts    = [];
+let txns        = [];
+let budgets     = [];
+let categories  = [];
+let curFilter   = 'all';
+let curType     = 'out';
+let charts      = {};
+let activePage  = localStorage.getItem('activePage') || 'home';
+let dateRangeDays = 30; // default filter for dashboard
 
-try {
-  pageScrollPositions = JSON.parse(localStorage.getItem('pageScrollPositions') || '{}');
-} catch (error) {
-  pageScrollPositions = {};
-}
+// ─── NUMBER FORMATTER ─────────────────────────────────────────────────────────
 
+/** Format number as ₹1,23,456.00 (Indian numbering) */
 const fmt = n => {
   const abs = Math.abs(n);
-  const formatted = abs.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '');
-  return '§' + formatted;
+  const str = abs.toFixed(2);
+  const [intPart, dec] = str.split('.');
+  // Indian numbering: last 3 digits, then groups of 2
+  const lastThree = intPart.slice(-3);
+  const rest = intPart.slice(0, -3);
+  const formatted = rest
+    ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + ',' + lastThree
+    : lastThree;
+  return '₹' + formatted + '.' + dec;
 };
 
-// Theme Management
+// ─── THEME ────────────────────────────────────────────────────────────────────
+
 function toggleTheme() {
   const body = document.body;
-  const currentTheme = body.getAttribute('data-theme');
-  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-  body.setAttribute('data-theme', newTheme);
-  localStorage.setItem('theme', newTheme);
-  
-  const themeBtn = document.querySelector('.theme-toggle');
-  themeBtn.textContent = newTheme === 'light' ? '§' : '§';
+  const current = body.getAttribute('data-theme') || 'dark';
+  const next    = current === 'light' ? 'dark' : 'light';
+  body.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '🌙' : '☀️';
+  // Re-draw charts with new theme colors
+  if (activePage === 'charts') loadCharts();
 }
 
 function loadTheme() {
-  const savedTheme = localStorage.getItem('theme') || 'dark';
-  document.body.setAttribute('data-theme', savedTheme);
-  const themeBtn = document.querySelector('.theme-toggle');
-  themeBtn.textContent = savedTheme === 'light' ? '§' : '§';
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.body.setAttribute('data-theme', saved);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = saved === 'light' ? '🌙' : '☀️';
 }
 
-// Check authentication status
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+
 function checkAuth() {
   const token = localStorage.getItem('token');
   if (!token) {
@@ -51,10 +64,16 @@ function checkAuth() {
   return true;
 }
 
-// API Functions
+function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = '/login.html';
+}
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+
 async function apiCall(endpoint, options = {}) {
   const token = localStorage.getItem('token');
-  
   try {
     const response = await fetch(API_BASE + endpoint, {
       headers: {
@@ -64,33 +83,90 @@ async function apiCall(endpoint, options = {}) {
       },
       ...options
     });
-    
+
+    if (response.status === 401 || response.status === 403) {
+      logout(); return;
+    }
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.error || 'Request failed');
     }
-    
     return await response.json();
   } catch (error) {
     console.error('API Error:', error);
-    showToast('§ ' + error.message, true);
+    showToast('❌ ' + error.message, true);
     throw error;
   }
 }
 
-// Logout function
-function logout() {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  window.location.href = '/login.html';
+// ─── LOADING ──────────────────────────────────────────────────────────────────
+
+function showLoading()  { document.getElementById('loading-overlay').classList.remove('hidden'); }
+function hideLoading()  { document.getElementById('loading-overlay').classList.add('hidden'); }
+
+// ─── USER GREETING ────────────────────────────────────────────────────────────
+
+function updateUserDisplay() {
+  const userJson = localStorage.getItem('user');
+  if (!userJson) return;
+  try {
+    const user = JSON.parse(userJson);
+    const pill = document.getElementById('nav-user');
+    if (pill && user.name) pill.textContent = '👤 ' + user.name.split(' ')[0];
+  } catch (e) { /* ignore */ }
 }
 
-document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+// ─── NAV BALANCE ──────────────────────────────────────────────────────────────
+
+async function refreshNav() {
+  try {
+    const summary = await apiCall('/summary');
+    const n  = summary.net_balance;
+    const el = document.getElementById('nav-bal');
+    el.textContent = (n < 0 ? '-' : '') + fmt(Math.abs(n));
+    el.className   = n >= 0 ? 'bal-pill positive' : 'bal-pill negative';
+  } catch (e) { /* silent */ }
+}
+
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+
+async function go(page) {
+  const validPages = ['home', 'dash', 'charts', 'budgets', 'manage'];
+  if (!validPages.includes(page)) page = 'home';
+
+  activePage = page;
+  localStorage.setItem('activePage', page);
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.mob-tab').forEach(b => b.classList.remove('on'));
+
+  document.getElementById('pg-' + page).classList.add('on');
+  document.getElementById('t-' + page).classList.add('on');
+  const mobTab = document.getElementById('m-' + page);
+  if (mobTab) mobTab.classList.add('on');
+
+  // Show floating calculator only on dashboard
+  const floatCalc = document.getElementById('floating-calculator');
+  floatCalc.style.display = page === 'dash' ? 'block' : 'none';
+
+  if (page === 'home')    drawHomeRecent();
+  if (page === 'dash')    drawDash();
+  if (page === 'charts')  loadCharts();
+  if (page === 'manage')  showManagePage();
+  if (page === 'budgets') showBudgetsPage();
+}
+
+// ─── HOME PAGE ────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('f-date').value = new Date().toISOString().slice(0, 10);
+});
 
 function pickType(t) {
   curType = t;
-  document.getElementById('tp-out').className = 'topt' + (t==='out' ? ' out' : '');
-  document.getElementById('tp-in').className  = 'topt' + (t==='in'  ? ' in' : '');
+  document.getElementById('tp-out').className = 'topt' + (t === 'out' ? ' out' : '');
+  document.getElementById('tp-in').className  = 'topt' + (t === 'in'  ? ' in'  : '');
 }
 
 async function addEntry() {
@@ -99,95 +175,71 @@ async function addEntry() {
   const cid  = document.getElementById('f-cat').value ? parseInt(document.getElementById('f-cat').value) : null;
   const rsn  = document.getElementById('f-reason').value.trim();
   const amt  = parseFloat(document.getElementById('f-amt').value);
-  
+
   if (!date || !rsn || isNaN(amt) || amt <= 0) {
-    showToast('Fill all fields correctly', true); return;
+    showToast('⚠️ Fill all fields correctly', true); return;
   }
-  
+
+  const btn = document.getElementById('btn-add-entry');
+  btn.disabled = true; btn.querySelector('span').textContent = 'Adding…';
+
   try {
-    const newTransaction = await apiCall('/transactions', {
+    const newTxn = await apiCall('/transactions', {
       method: 'POST',
-      body: JSON.stringify({
-        date,
-        account_id: aid,
-        category_id: cid,
-        reason: rsn,
-        amount: amt,
-        type: curType
-      })
+      body: JSON.stringify({ date, account_id: aid, category_id: cid, reason: rsn, amount: amt, type: curType })
     });
-    
-    txns.unshift(newTransaction);
+
+    // Optimistically add to local list
+    const cat = categories.find(c => c.id === cid);
+    const acc = accounts.find(a => a.id === aid);
+    newTxn.account_name   = acc ? acc.name : '';
+    newTxn.category_name  = cat ? cat.name : null;
+    newTxn.category_icon  = cat ? cat.icon : null;
+    newTxn.category_color = cat ? cat.color : null;
+    txns.unshift(newTxn);
+
     refreshNav();
-    
+    drawHomeRecent();
+
     document.getElementById('f-reason').value = '';
-    document.getElementById('f-amt').value = '';
-    document.getElementById('f-cat').value = '';
-    
-    showToast('Entry added!');
-  } catch (error) {
-    console.error('Failed to add entry:', error);
+    document.getElementById('f-amt').value    = '';
+    document.getElementById('f-cat').value    = '';
+
+    showToast('✅ Entry added!');
+  } catch (e) {
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.querySelector('span').textContent = 'Add Entry';
   }
 }
 
-async function deleteEntry(id) {
-  if (!confirm('Are you sure you want to delete this entry?')) return;
-  
-  try {
-    await apiCall(`/transactions/${id}`, { method: 'DELETE' });
-    txns = txns.filter(t => t.id !== id);
-    drawDash(); 
-    refreshNav();
-    showToast('Entry deleted');
-  } catch (error) {
-    console.error('Failed to delete entry:', error);
-  }
+function drawHomeRecent() {
+  const container = document.getElementById('home-recent');
+  if (!container) return;
+
+  const recent = txns.slice(0, 5);
+  if (!recent.length) { container.innerHTML = ''; return; }
+
+  container.innerHTML = `
+    <div class="home-recent-title">Recent Activity</div>
+    ${recent.map(t => {
+      const cat = categories.find(c => c.id === t.category_id);
+      const icon = cat ? cat.icon : (t.type === 'in' ? '💰' : '💸');
+      return `
+      <div class="recent-item">
+        <div class="recent-icon">${icon}</div>
+        <div class="recent-info">
+          <div class="recent-reason">${escHtml(t.reason)}</div>
+          <div class="recent-meta">${t.date} · ${t.account_name || ''}</div>
+        </div>
+        <div class="recent-amount ${t.type === 'in' ? 'gi' : 'ri'}">
+          ${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}
+        </div>
+      </div>`;
+    }).join('')}`;
 }
 
-async function renameAcc(id, val) {
-  if (!val.trim()) return;
-  
-  try {
-    await apiCall(`/accounts/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ name: val.trim() })
-    });
-    
-    drawDash(); 
-    fillAccSelect();
-    showToast('Account renamed');
-  } catch (error) {
-    console.error('Failed to rename account:', error);
-  }
-}
-
-function fillAccSelect() {
-  const select = document.getElementById('f-acc');
-  if (!select) return;
-  
-  select.innerHTML = accounts.length > 0 
-    ? accounts.map(a => `<option value="${a.id}">${a.name}</option>`).join('')
-    : '<option value="">No accounts available</option>';
-}
-
-async function refreshNav() {
-  try {
-    const summary = await apiCall('/summary');
-    const n = summary.net_balance;
-    const el = document.getElementById('nav-bal');
-    el.textContent = (n<0?'-':'')+fmt(n);
-    el.className = n>=0 ? 'bal-pill positive' : 'bal-pill negative';
-  } catch (error) {
-    console.error('Failed to refresh nav:', error);
-  }
-}
-
-function filt(val, btn) {
-  curFilter = val;
-  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('on'));
-  btn.classList.add('on');
-  drawTable();
-}
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
 async function drawDash() {
   try {
@@ -195,446 +247,413 @@ async function drawDash() {
       apiCall('/account-balances'),
       apiCall('/summary')
     ]);
-    
-    document.getElementById('acc-grid').innerHTML = accountBalances.map((a,i) => {
-      return `<div class="acc-card">
-        <div class="acc-name-row">
-          <input class="acc-name" value="${a.name}" onchange="renameAcc(${a.id},this.value)" title="Click to rename">
-          <span class="edit-ico">§</span>
-        </div>
-        <div class="acc-bal">${fmt(a.balance)}</div>
-        <div class="acc-sub">${a.transaction_count} transaction${a.transaction_count!==1?'s':''}</div>
-      </div>`;
-    }).join('');
 
+    // Account cards
+    document.getElementById('acc-grid').innerHTML = accountBalances.length === 0
+      ? '<div class="budget-empty"><div class="ico">🏦</div><div>No accounts yet</div></div>'
+      : accountBalances.map((a, i) => `
+        <div class="acc-card">
+          <div class="acc-name-row">
+            <input class="acc-name" value="${escHtml(a.name)}"
+              onchange="renameAcc(${a.id}, this.value)" title="Click to rename">
+            <span class="edit-ico">✏️</span>
+          </div>
+          <div class="acc-bal">${fmt(a.balance)}</div>
+          <div class="acc-sub">${a.transaction_count} transaction${a.transaction_count !== 1 ? 's' : ''}</div>
+        </div>`).join('');
+
+    // Filter buttons by account
     document.getElementById('filt-btns').innerHTML = accounts.map(a =>
-      `<button class="fbtn ${curFilter==a.id?'on':''}" onclick="filt(${a.id},this)">${a.name}</button>`
+      `<button class="fbtn ${curFilter == a.id ? 'on' : ''}" onclick="filt(${a.id}, this)">${a.name}</button>`
     ).join('');
 
+    // Summary stats
     document.getElementById('s-in').textContent  = fmt(summary.total_in);
     document.getElementById('s-out').textContent = fmt(summary.total_out);
-    document.getElementById('s-net').textContent = fmt(summary.net_balance);
-    document.getElementById('s-net').className = summary.net_balance>=0 ? 'positive' : 'negative';
+
+    const netEl = document.getElementById('s-net');
+    netEl.textContent = fmt(summary.net_balance);
+    netEl.className   = summary.net_balance >= 0 ? 'positive' : 'negative';
     document.getElementById('s-cnt').textContent = summary.total_transactions;
-    
+
     drawTable();
-  } catch (error) {
-    console.error('Failed to draw dashboard:', error);
+  } catch (e) {
+    console.error('Dashboard error:', e);
   }
 }
 
+function applyDateRangeFilter() {
+  const val = document.getElementById('date-range-filter').value;
+  dateRangeDays = val === 'all' ? null : parseInt(val);
+  drawTable();
+}
+
+function filt(val, btn) {
+  curFilter = val;
+  document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  drawTable();
+}
+
 function drawTable() {
-  // Check if we're on the dashboard page
-  const tbody = document.getElementById('tbody');
-  const empty = document.getElementById('empty');
-  const srch = document.getElementById('srch');
+  const tbody    = document.getElementById('tbody');
+  const empty    = document.getElementById('empty');
+  const srch     = document.getElementById('srch');
   const catFilter = document.getElementById('cat-filter');
-  
-  // If any required elements don't exist, return early
-  if (!tbody || !empty || !srch || !catFilter) {
-    return;
-  }
-  
-  const srchValue = srch.value.toLowerCase();
-  const catFilterValue = catFilter.value;
+  if (!tbody || !empty || !srch || !catFilter) return;
+
+  const srchVal    = srch.value.toLowerCase();
+  const catVal     = catFilter.value;
+  const now        = new Date();
+  const cutoff     = dateRangeDays
+    ? new Date(now.getTime() - dateRangeDays * 86400000).toISOString().slice(0, 10)
+    : null;
+
   const rows = txns.filter(t => {
-    const matchesSearch = t.reason.toLowerCase().includes(srchValue) || 
-                         t.account_name.toLowerCase().includes(srchValue) || 
-                         (t.category_name||'').toLowerCase().includes(srchValue);
-    const matchesCategory = !catFilterValue || t.category_id == catFilterValue;
-    return matchesSearch && matchesCategory;
+    const matchSearch  = t.reason.toLowerCase().includes(srchVal) ||
+                         (t.account_name||'').toLowerCase().includes(srchVal) ||
+                         (t.category_name||'').toLowerCase().includes(srchVal);
+    const matchCat     = !catVal || t.category_id == catVal;
+    const matchAccount = curFilter === 'all' || t.account_id == curFilter;
+    const matchDate    = !cutoff || t.date >= cutoff;
+    return matchSearch && matchCat && matchAccount && matchDate;
   });
-  
-  if (!rows.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
-  empty.style.display='none';
+
+  if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
   tbody.innerHTML = rows.map(t => {
-    const d   = new Date(t.date+'T00:00:00');
+    const d   = new Date(t.date + 'T00:00:00');
     const day = DAYS[d.getDay()];
-    const acc = accounts.find(a=>a.id===t.account_id);
-    const idx = accounts.findIndex(a=>a.id===t.account_id);
+    const acc = accounts.find(a => a.id === t.account_id);
+    const idx = accounts.findIndex(a => a.id === t.account_id);
+    const catLabel = t.category_icon
+      ? `${t.category_icon} ${escHtml(t.category_name)}`
+      : (t.category_name ? escHtml(t.category_name) : '<span style="color:var(--muted)">—</span>');
     return `<tr>
       <td class="dt">${t.date}</td>
-      <td class="dy">${day}</td>
-      <td><span class="badge b${idx%3}">${acc?acc.name:'?'}</span></td>
-      <td>${t.category_name || 'Uncategorized'}</td>
-      <td>${t.reason}</td>
-      <td>${t.type==='in'?'<span class="tin">IN</span>':'<span class="tout">OUT</span>'}</td>
-      <td class="amt ${t.type==='in'?'gi':'ri'}">${t.type==='in'?'+':'-'}${fmt(t.amount)}</td>
-      <td><button class="xbtn" onclick="deleteEntry(${t.id})">🗑️</button></td>
+      <td class="dy">${day.slice(0,3)}</td>
+      <td><span class="badge b${idx % 4}">${acc ? escHtml(acc.name) : '?'}</span></td>
+      <td class="cat-badge">${catLabel}</td>
+      <td title="${escHtml(t.reason)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.reason)}</td>
+      <td>${t.type === 'in' ? '<span class="tin">IN</span>' : '<span class="tout">OUT</span>'}</td>
+      <td class="amt ${t.type === 'in' ? 'gi' : 'ri'}">${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}</td>
+      <td><button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete">🗑️</button></td>
     </tr>`;
   }).join('');
 }
 
-function exportCSV() {
-  window.open(API_BASE + '/export/csv', '_blank');
-  showToast('₹ Export started!');
-}
-
-// Export Modal Functions
-function showExportModal() {
-  // Set default date range (last 30 days)
-  const today = new Date();
-  const thirtyDaysAgo = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
-  
-  document.getElementById('export-start-date').value = thirtyDaysAgo.toISOString().split('T')[0];
-  document.getElementById('export-end-date').value = today.toISOString().split('T')[0];
-  
-  document.getElementById('export-modal').classList.add('show');
-}
-
-function closeExportModal() {
-  document.getElementById('export-modal').classList.remove('show');
-}
-
-async function exportTransactions() {
-  const startDate = document.getElementById('export-start-date').value;
-  const endDate = document.getElementById('export-end-date').value;
-  const format = document.querySelector('input[name="export-format"]:checked').value;
-  
-  if (!startDate || !endDate) {
-    showToast('₹ Please select both start and end dates', true);
-    return;
-  }
-  
+async function deleteEntry(id) {
+  if (!confirm('Delete this entry?')) return;
   try {
-    // Create a form and submit it to avoid CORS issues
-    const form = document.createElement('form');
-    form.method = 'GET';
-    form.action = `${API_BASE}/export/${format}`;
-    form.target = '_blank';
-    
-    // Add date parameters
-    const startInput = document.createElement('input');
-    startInput.type = 'hidden';
-    startInput.name = 'start';
-    startInput.value = startDate;
-    form.appendChild(startInput);
-    
-    const endInput = document.createElement('input');
-    endInput.type = 'hidden';
-    endInput.name = 'end';
-    endInput.value = endDate;
-    form.appendChild(endInput);
-    
-    // Add token
-    const tokenInput = document.createElement('input');
-    tokenInput.type = 'hidden';
-    tokenInput.name = 'token';
-    tokenInput.value = localStorage.getItem('token');
-    form.appendChild(tokenInput);
-    
-    // Submit form
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-    
-    closeExportModal();
-    showToast(`₹ Export started in ${format.toUpperCase()} format!`);
-  } catch (error) {
-    console.error('Export error:', error);
-    showToast('₹ Export failed', true);
-  }
+    await apiCall(`/transactions/${id}`, { method: 'DELETE' });
+    txns = txns.filter(t => t.id !== id);
+    drawDash();
+    drawHomeRecent();
+    refreshNav();
+    showToast('🗑️ Entry deleted');
+  } catch (e) { console.error(e); }
 }
 
-let toastTimeout;
-function showToast(msg, isError = false) {
-  const el = document.getElementById('toast');
-  el.textContent  = msg;
-  el.style.borderColor = isError?'var(--a2)':'var(--a1)';
-  el.style.color       = isError?'var(--a2)':'var(--a1)';
-  el.classList.add('on');
-  clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(()=>el.classList.remove('on'), 3000);
-}
-
-// Account and Category Management
-let categories = [];
-let editingAccountId = null;
-let editingCategoryId = null;
-
-// Load categories
-async function loadCategories() {
+async function renameAcc(id, val) {
+  if (!val.trim()) return;
   try {
-    categories = await apiCall('/categories');
-    fillCategorySelect();
-  } catch (error) {
-    console.error('Failed to load categories:', error);
-  }
-}
-
-// Fill category select in form
-function fillCategorySelect() {
-  const select = document.getElementById('f-cat');
-  if (!select) return;
-  
-  select.innerHTML = '<option value="">No Category</option>' + 
-    categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
-}
-
-// Show manage page
-async function showManagePage() {
-  try {
-    await loadCategories();
-    
-    // Load accounts
-    const accountBalances = await apiCall('/account-balances');
-    
-    // Display accounts
-    document.getElementById('accounts-list').innerHTML = accountBalances.map(a => `
-      <div class="manage-item">
-        <div class="manage-item-info">
-          <div class="manage-item-name">${a.name}</div>
-          <div class="manage-item-details">${a.transaction_count} transactions Balance: ${fmt(a.balance)}</div>
-        </div>
-        <div class="manage-item-actions">
-          <button class="btn-edit" onclick="editAccount(${a.id}, '${a.name}')">Edit</button>
-          ${a.transaction_count === 0 ? `<button class="btn-delete" onclick="deleteAccount(${a.id})">Delete</button>` : ''}
-        </div>
-      </div>
-    `).join('');
-    
-    // Display categories
-    document.getElementById('categories-list').innerHTML = categories.map(c => `
-      <div class="manage-item">
-        <div class="manage-item-info">
-          <div class="manage-item-name">${c.icon} ${c.name}</div>
-          <div class="manage-item-details" style="display: flex; align-items: center; gap: 8px;">
-            <span style="display: inline-block; width: 12px; height: 12px; background: ${c.color}; border-radius: 50%;"></span>
-            ${c.color}
-          </div>
-        </div>
-        <div class="manage-item-actions">
-          <button class="btn-edit" onclick="editCategory(${c.id}, '${c.name}', '${c.color}', '${c.icon}')">Edit</button>
-          <button class="btn-delete" onclick="deleteCategory(${c.id})">Delete</button>
-        </div>
-      </div>
-    `).join('');
-  } catch (error) {
-    console.error('Failed to load manage page:', error);
-  }
-}
-
-// Account Management Functions
-function showAddAccountModal() {
-  editingAccountId = null;
-  document.getElementById('account-modal-title').textContent = 'Add New Account';
-  document.getElementById('account-name').value = '';
-  document.getElementById('account-modal').classList.add('show');
-}
-
-function editAccount(id, name) {
-  editingAccountId = id;
-  document.getElementById('account-modal-title').textContent = 'Edit Account';
-  document.getElementById('account-name').value = name;
-  document.getElementById('account-modal').classList.add('show');
-}
-
-function closeAccountModal() {
-  document.getElementById('account-modal').classList.remove('show');
-  editingAccountId = null;
-}
-
-async function saveAccount() {
-  const name = document.getElementById('account-name').value.trim();
-  if (!name) {
-    showToast('₹ Account name is required', true);
-    return;
-  }
-  
-  try {
-    if (editingAccountId) {
-      await apiCall(`/accounts/${editingAccountId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ name })
-      });
-      showToast('Account updated successfully');
-    } else {
-      await apiCall('/accounts', {
-        method: 'POST',
-        body: JSON.stringify({ name })
-      });
-      showToast('Account created successfully');
-    }
-    
-    closeAccountModal();
+    await apiCall(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify({ name: val.trim() }) });
     await loadData();
-    await showManagePage();
-  } catch (error) {
-    console.error('Failed to save account:', error);
-  }
+    drawDash();
+    showToast('✅ Account renamed');
+  } catch (e) { console.error(e); }
 }
 
-async function deleteAccount(id) {
-  if (!confirm('Are you sure you want to delete this account?')) return;
-  
+// ─── CHARTS ───────────────────────────────────────────────────────────────────
+
+async function loadCharts() {
+  const period = document.getElementById('chart-period')?.value || 'monthly';
+  const months = document.getElementById('chart-months')?.value || 6;
+
   try {
-    await apiCall(`/accounts/${id}`, { method: 'DELETE' });
-    showToast('Account deleted successfully');
-    await loadData();
-    await showManagePage();
-  } catch (error) {
-    console.error('Failed to delete account:', error);
+    const [trends, breakdown] = await Promise.all([
+      apiCall(`/spending-trends?period=${period}&months=${months}`),
+      apiCall(`/category-breakdown?type=out&months=${months}`)
+    ]);
+
+    drawTrendChart(trends);
+    drawCategoryChart(breakdown);
+    drawNetChart(trends);
+    drawInsights(trends, breakdown);
+  } catch (e) {
+    console.error('Charts error:', e);
   }
 }
 
-// Category Management Functions
-function showAddCategoryModal() {
-  editingCategoryId = null;
-  document.getElementById('category-modal-title').textContent = 'Add New Category';
-  document.getElementById('category-name').value = '';
-  document.getElementById('category-color').value = '#7c6af7';
-  document.getElementById('category-icon').value = '🍔';
-  document.getElementById('category-modal').classList.add('show');
+function getChartColors() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    text:   style.getPropertyValue('--text').trim()   || '#f8fafc',
+    muted:  style.getPropertyValue('--muted').trim()  || '#94a3b8',
+    border: style.getPropertyValue('--border').trim() || 'rgba(255,255,255,0.08)',
+    bg2:    style.getPropertyValue('--bg2').trim()    || '#1e293b',
+    green:  style.getPropertyValue('--green').trim()  || '#10b981',
+    red:    style.getPropertyValue('--red').trim()    || '#f43f5e',
+    a1:     style.getPropertyValue('--a1').trim()     || '#8b5cf6',
+  };
 }
 
-function editCategory(id, name, color, icon) {
-  editingCategoryId = id;
-  document.getElementById('category-modal-title').textContent = 'Edit Category';
-  document.getElementById('category-name').value = name;
-  document.getElementById('category-color').value = color;
-  document.getElementById('category-icon').value = icon;
-  document.getElementById('category-modal').classList.add('show');
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
-function closeCategoryModal() {
-  document.getElementById('category-modal').classList.remove('show');
-  editingCategoryId = null;
-}
+function drawTrendChart(trends) {
+  destroyChart('trend');
+  const ctx = document.getElementById('trendChart');
+  if (!ctx) return;
 
-async function saveCategory() {
-  const name = document.getElementById('category-name').value.trim();
-  const color = document.getElementById('category-color').value;
-  const icon = document.getElementById('category-icon').value.trim() || '🍔';
-  
-  if (!name) {
-    showToast('₹ Category name is required', true);
-    return;
-  }
-  
-  try {
-    if (editingCategoryId) {
-      await apiCall(`/categories/${editingCategoryId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ name, color, icon })
-      });
-      showToast('Category updated successfully');
-    } else {
-      await apiCall('/categories', {
-        method: 'POST',
-        body: JSON.stringify({ name, color, icon })
-      });
-      showToast('Category created successfully');
+  const labels = Object.keys(trends).sort();
+  const incomeData  = labels.map(l => trends[l].in  || 0);
+  const spendData   = labels.map(l => trends[l].out || 0);
+  const c = getChartColors();
+
+  charts.trend = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Income',
+          data: incomeData,
+          borderColor: c.green,
+          backgroundColor: 'rgba(16,185,129,0.08)',
+          borderWidth: 2.5,
+          pointBackgroundColor: c.green,
+          pointRadius: 4, pointHoverRadius: 6,
+          fill: true, tension: 0.4
+        },
+        {
+          label: 'Spending',
+          data: spendData,
+          borderColor: '#f43f5e',
+          backgroundColor: 'rgba(244,63,94,0.08)',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#f43f5e',
+          pointRadius: 4, pointHoverRadius: 6,
+          fill: true, tension: 0.4
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: c.muted, font: { family: 'Outfit', size: 13, weight: '600' } } },
+        tooltip: {
+          backgroundColor: c.bg2,
+          titleColor: c.text, bodyColor: c.muted,
+          borderColor: c.border, borderWidth: 1,
+          callbacks: { label: ctx => `  ${ctx.dataset.label}: ₹${ctx.parsed.y.toFixed(2)}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: c.muted, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: {
+          ticks: {
+            color: c.muted, font: { size: 11 },
+            callback: v => '₹' + (v >= 1000 ? (v/1000).toFixed(1) + 'k' : v)
+          },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
+      }
     }
-    
-    closeCategoryModal();
-    await loadCategories();
-    await showManagePage();
-  } catch (error) {
-    console.error('Failed to save category:', error);
+  });
+}
+
+function drawCategoryChart(breakdown) {
+  destroyChart('category');
+  const ctx = document.getElementById('categoryChart');
+  const legendEl = document.getElementById('category-legend');
+  if (!ctx) return;
+
+  const labels = breakdown.map(b => b.category_icon + ' ' + b.category_name);
+  const data   = breakdown.map(b => b.total);
+  const colors = breakdown.map(b => b.category_color || '#8b5cf6');
+  const c = getChartColors();
+
+  charts.category = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: colors, borderColor: c.bg2, borderWidth: 3, hoverOffset: 8 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: c.bg2, titleColor: c.text, bodyColor: c.muted,
+          borderColor: c.border, borderWidth: 1,
+          callbacks: { label: ctx => `  ₹${ctx.parsed.toFixed(2)} (${Math.round(ctx.parsed / data.reduce((a,b)=>a+b,0)*100)}%)` }
+        }
+      }
+    }
+  });
+
+  // Custom legend
+  if (legendEl) {
+    legendEl.innerHTML = breakdown.slice(0, 6).map((b, i) => `
+      <div class="legend-item">
+        <span class="legend-dot" style="background:${colors[i]}"></span>
+        <span>${b.category_icon} ${escHtml(b.category_name)}</span>
+      </div>`).join('');
   }
 }
 
-async function deleteCategory(id) {
-  if (!confirm('Are you sure you want to delete this category?')) return;
-  
-  try {
-    await apiCall(`/categories/${id}`, { method: 'DELETE' });
-    showToast('Category deleted successfully');
-    await loadCategories();
-    await showManagePage();
-  } catch (error) {
-    console.error('Failed to delete category:', error);
-  }
+function drawNetChart(trends) {
+  destroyChart('net');
+  const ctx = document.getElementById('netChart');
+  if (!ctx) return;
+
+  const labels  = Object.keys(trends).sort();
+  const netData = labels.map(l => (trends[l].in || 0) - (trends[l].out || 0));
+  const colors  = netData.map(v => v >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(244,63,94,0.7)');
+  const c = getChartColors();
+
+  charts.net = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Net Balance',
+        data: netData,
+        backgroundColor: colors,
+        borderColor: colors,
+        borderRadius: 6, borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: c.bg2, titleColor: c.text, bodyColor: c.muted,
+          borderColor: c.border, borderWidth: 1,
+          callbacks: { label: ctx => `  Net: ₹${ctx.parsed.y.toFixed(2)}` }
+        }
+      },
+      scales: {
+        x: { ticks: { color: c.muted, font: { size: 11 } }, grid: { display: false } },
+        y: {
+          ticks: { color: c.muted, font: { size: 11 },
+                   callback: v => '₹' + (Math.abs(v) >= 1000 ? (v/1000).toFixed(1) + 'k' : v) },
+          grid: { color: 'rgba(255,255,255,0.04)' }
+        }
+      }
+    }
+  });
 }
 
-// Update go function to handle manage page
-async function go(page) {
-  const pageId = 'pg-' + page;
-  const tabId = 't-' + page;
-  if (!document.getElementById(pageId) || !document.getElementById(tabId)) {
-    page = 'home';
-  }
+function drawInsights(trends, breakdown) {
+  const container = document.getElementById('chart-insights');
+  if (!container) return;
 
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
-  document.getElementById('pg-'+page).classList.add('on');
-  document.getElementById('t-'+page).classList.add('on');
-  
-  // Show/hide calculator based on page
-  const calculator = document.getElementById('floating-calculator');
-  if (page === 'dash') {
-    calculator.style.display = 'block';
-  } else {
-    calculator.style.display = 'none';
-  }
-  
-  if (page==='dash') drawDash();
-  if (page==='manage') showManagePage();
-  if (page==='budgets') showBudgetsPage();
+  const labels    = Object.keys(trends).sort();
+  const totalIn   = labels.reduce((s, l) => s + (trends[l].in  || 0), 0);
+  const totalOut  = labels.reduce((s, l) => s + (trends[l].out || 0), 0);
+  const avgIn     = labels.length ? totalIn  / labels.length : 0;
+  const avgOut    = labels.length ? totalOut / labels.length : 0;
+  const topCat    = breakdown[0];
+  const savingsRate = totalIn > 0 ? Math.round(((totalIn - totalOut) / totalIn) * 100) : 0;
+
+  container.innerHTML = `
+    <div class="insight-card">
+      <div class="insight-icon">💰</div>
+      <div class="insight-label">Avg Monthly Income</div>
+      <div class="insight-value" style="color:var(--green)">${fmt(avgIn)}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon">💸</div>
+      <div class="insight-label">Avg Monthly Spend</div>
+      <div class="insight-value" style="color:var(--red)">${fmt(avgOut)}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon">📊</div>
+      <div class="insight-label">Savings Rate</div>
+      <div class="insight-value" style="color:${savingsRate >= 0 ? 'var(--green)' : 'var(--red)'}">${savingsRate}%</div>
+    </div>
+    ${topCat ? `
+    <div class="insight-card">
+      <div class="insight-icon">${topCat.category_icon || '📌'}</div>
+      <div class="insight-label">Top Spending Category</div>
+      <div class="insight-value" style="font-size:1.1rem">${escHtml(topCat.category_name)}</div>
+    </div>` : ''}`;
 }
 
-// --- BUDGET MANAGEMENT ---
+// ─── BUDGETS PAGE ─────────────────────────────────────────────────────────────
+
 let editingBudgetId = null;
 
 async function loadBudgets() {
-  try {
-    budgets = await apiCall('/budgets');
-  } catch (error) {
-    console.error('Failed to load budgets:', error);
-  }
-}
-
-function populateBudgetCategoryFilter() {
-  const select = document.getElementById('budget-category');
-  if (!select) return;
-  select.innerHTML = '<option value="">Select Category</option>' + 
-    categories.map(c => `<option value="${c.id}">${c.icon} ${c.name}</option>`).join('');
+  try { budgets = await apiCall('/budgets'); }
+  catch (e) { console.error(e); }
 }
 
 async function showBudgetsPage() {
   try {
     const summary = await apiCall('/summary');
     await loadBudgets();
-    
+
     const grid = document.getElementById('budget-grid');
     if (!grid) return;
-    
-    if (budgets.length === 0) {
-      grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted)">No budgets set. Click "+ Set Budget" to start tracking.</div>';
+
+    if (!budgets.length) {
+      grid.innerHTML = `
+        <div class="budget-empty">
+          <div class="ico">🎯</div>
+          <div>No budgets set yet.<br>Click <strong>+ Set Budget</strong> to start tracking.</div>
+        </div>`;
       return;
     }
-    
+
     grid.innerHTML = budgets.map(b => {
       let spent = 0;
-      if (summary.categories && summary.categories[b.category_name]) {
+      if (summary.categories?.[b.category_name]) {
         spent = summary.categories[b.category_name].out || 0;
       }
-      
-      const pct = Math.min(100, Math.round((spent / b.amount) * 100));
+      const pct       = Math.min(100, Math.round((spent / b.amount) * 100));
       const remaining = b.amount - spent;
-      let barColor = 'var(--a1)';
-      if (pct > 90) barColor = 'var(--a2)';
-      else if (pct > 75) barColor = 'orange';
-      
+      let barColor    = '#10b981';
+      if (pct > 90) barColor = '#f43f5e';
+      else if (pct > 70) barColor = '#f59e0b';
+
       return `
       <div class="acc-card">
         <div class="acc-name-row">
-          <div class="acc-name">${b.category_icon || ''} ${b.category_name || 'Unknown'}</div>
-          <button class="xbtn" onclick="deleteBudget(${b.id})" title="Delete" style="background:transparent; border:none; cursor:pointer;">🗑️</button>
+          <div style="display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif;font-weight:700;font-size:1rem">
+            <span>${b.category_icon || '📌'}</span> ${escHtml(b.category_name || 'Unknown')}
+          </div>
+          <button class="xbtn" onclick="deleteBudget(${b.id})" title="Delete">🗑️</button>
         </div>
-        <div style="font-size: 1.2rem; margin: 10px 0; color: var(--text)">${fmt(spent)} / ${fmt(b.amount)}</div>
-        <div style="width: 100%; height: 8px; background: var(--bg2); border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
-          <div style="width: ${pct}%; height: 100%; background: ${barColor}; border-radius: 4px;"></div>
+        <div style="font-size:1.3rem;font-weight:800;margin:10px 0;font-family:'Outfit',sans-serif">
+          ${fmt(spent)} <span style="font-size:0.9rem;color:var(--muted);font-weight:500">/ ${fmt(b.amount)}</span>
         </div>
-        <div class="acc-sub" style="display: flex; justify-content: space-between;">
+        <div class="budget-progress">
+          <div class="budget-progress-fill" style="width:${pct}%;background:${barColor}"></div>
+        </div>
+        <div class="acc-sub" style="display:flex;justify-content:space-between;margin-top:4px">
           <span>${pct}% used</span>
-          <span style="color: ${remaining < 0 ? 'var(--a2)' : 'var(--green)'}">${fmt(Math.abs(remaining))} ${remaining < 0 ? 'over' : 'left'}</span>
+          <span style="color:${remaining < 0 ? 'var(--red)' : 'var(--green)'}">
+            ${fmt(Math.abs(remaining))} ${remaining < 0 ? 'over budget' : 'remaining'}
+          </span>
         </div>
-        <button style="margin-top:12px; width:100%; padding: 6px; background: var(--bg2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer;" onclick="editBudget(${b.id}, ${b.category_id}, ${b.amount})">Edit</button>
+        <button onclick="editBudget(${b.id}, ${b.category_id}, ${b.amount})"
+          style="margin-top:14px;width:100%;padding:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif;transition:0.25s"
+          onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+          onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+          Edit
+        </button>
       </div>`;
     }).join('');
-  } catch (err) {
-    console.error('Error drawing budgets page:', err);
+  } catch (e) {
+    console.error('Budgets page error:', e);
   }
 }
 
@@ -642,308 +661,443 @@ function showAddBudgetModal() {
   editingBudgetId = null;
   document.getElementById('budget-modal-title').textContent = 'Set Category Budget';
   document.getElementById('budget-category').value = '';
-  document.getElementById('budget-amount').value = '';
+  document.getElementById('budget-amount').value   = '';
   document.getElementById('budget-modal').classList.add('show');
 }
-
-function editBudget(id, category_id, amount) {
+function editBudget(id, catId, amount) {
   editingBudgetId = id;
   document.getElementById('budget-modal-title').textContent = 'Edit Budget';
-  document.getElementById('budget-category').value = category_id;
-  document.getElementById('budget-amount').value = amount;
+  document.getElementById('budget-category').value = catId;
+  document.getElementById('budget-amount').value   = amount;
   document.getElementById('budget-modal').classList.add('show');
 }
-
 function closeBudgetModal() {
   document.getElementById('budget-modal').classList.remove('show');
 }
-
 async function saveBudget() {
-  const category_id = document.getElementById('budget-category').value;
+  const catId  = document.getElementById('budget-category').value;
   const amount = parseFloat(document.getElementById('budget-amount').value);
-  
-  if (!category_id || isNaN(amount) || amount <= 0) {
-    showToast('Select a category and enter a valid amount', true);
-    return;
+  if (!catId || isNaN(amount) || amount <= 0) {
+    showToast('⚠️ Select a category and enter a valid amount', true); return;
   }
-  
   try {
     if (editingBudgetId) {
-      await apiCall(`/budgets/${editingBudgetId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ category_id, amount })
-      });
-      showToast('Budget updated');
+      await apiCall(`/budgets/${editingBudgetId}`, { method: 'PUT', body: JSON.stringify({ category_id: catId, amount }) });
+      showToast('✅ Budget updated');
     } else {
-      await apiCall('/budgets', {
-        method: 'POST',
-        body: JSON.stringify({ category_id, amount })
-      });
-      showToast('Budget set');
+      await apiCall('/budgets', { method: 'POST', body: JSON.stringify({ category_id: catId, amount }) });
+      showToast('✅ Budget set');
     }
     closeBudgetModal();
     showBudgetsPage();
-  } catch (error) {
-    console.error('Failed to save budget:', error);
-  }
+  } catch (e) { console.error(e); }
 }
-
 async function deleteBudget(id) {
   if (!confirm('Delete this budget?')) return;
   try {
     await apiCall(`/budgets/${id}`, { method: 'DELETE' });
-    showToast('Budget deleted');
+    showToast('🗑️ Budget deleted');
     showBudgetsPage();
-  } catch (error) {
-    console.error('Failed to delete budget:', error);
-  }
+  } catch (e) { console.error(e); }
 }
 
-// Populate category filter dropdown
+function populateBudgetCategoryFilter() {
+  const sel = document.getElementById('budget-category');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Select Category</option>' +
+    categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
+}
+
+// ─── MANAGE PAGE ──────────────────────────────────────────────────────────────
+
+let editingAccountId  = null;
+let editingCategoryId = null;
+
+async function loadCategories() {
+  try {
+    categories = await apiCall('/categories');
+    fillCategorySelect();
+    populateCategoryFilter();
+    populateBudgetCategoryFilter();
+  } catch (e) { console.error(e); }
+}
+
+function fillCategorySelect() {
+  const sel = document.getElementById('f-cat');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">No Category</option>' +
+    categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
+}
+
+function fillAccSelect() {
+  const sel = document.getElementById('f-acc');
+  if (!sel) return;
+  sel.innerHTML = accounts.length
+    ? accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('')
+    : '<option value="">No accounts</option>';
+}
+
 function populateCategoryFilter() {
-  const catFilter = document.getElementById('cat-filter');
-  catFilter.innerHTML = '<option value="">All Categories</option>';
-  
-  categories.forEach(cat => {
-    const option = document.createElement('option');
-    option.value = cat.id;
-    option.textContent = `${cat.icon || ''} ${cat.name}`;
-    catFilter.appendChild(option);
-  });
+  const sel = document.getElementById('cat-filter');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All Categories</option>' +
+    categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
 }
 
-// Update loadData to include categories
+async function showManagePage() {
+  try {
+    await loadCategories();
+    const accountBalances = await apiCall('/account-balances');
+
+    document.getElementById('accounts-list').innerHTML = accountBalances.map(a => `
+      <div class="manage-item">
+        <div class="manage-item-info">
+          <div class="manage-item-name">🏦 ${escHtml(a.name)}</div>
+          <div class="manage-item-details">
+            ${a.transaction_count} transactions &nbsp;|&nbsp; Balance: ${fmt(a.balance)}
+          </div>
+        </div>
+        <div class="manage-item-actions">
+          <button class="btn-edit" onclick="editAccount(${a.id}, '${escHtml(a.name)}')">Edit</button>
+          ${a.transaction_count === 0 ? `<button class="btn-delete" onclick="deleteAccount(${a.id})">Delete</button>` : ''}
+        </div>
+      </div>`).join('');
+
+    document.getElementById('categories-list').innerHTML = categories.map(c => `
+      <div class="manage-item">
+        <div class="manage-item-info">
+          <div class="manage-item-name">${c.icon} ${escHtml(c.name)}</div>
+          <div class="manage-item-details">
+            <span style="display:inline-block;width:12px;height:12px;background:${c.color};border-radius:50%"></span>
+            ${c.color}
+          </div>
+        </div>
+        <div class="manage-item-actions">
+          <button class="btn-edit" onclick="editCategory(${c.id}, '${escHtml(c.name)}', '${c.color}', '${c.icon}')">Edit</button>
+          <button class="btn-delete" onclick="deleteCategory(${c.id})">Delete</button>
+        </div>
+      </div>`).join('');
+  } catch (e) { console.error(e); }
+}
+
+// Account modal
+function showAddAccountModal() {
+  editingAccountId = null;
+  document.getElementById('account-modal-title').textContent = 'Add New Account';
+  document.getElementById('account-name').value = '';
+  document.getElementById('account-modal').classList.add('show');
+}
+function editAccount(id, name) {
+  editingAccountId = id;
+  document.getElementById('account-modal-title').textContent = 'Edit Account';
+  document.getElementById('account-name').value = name;
+  document.getElementById('account-modal').classList.add('show');
+}
+function closeAccountModal() {
+  document.getElementById('account-modal').classList.remove('show');
+  editingAccountId = null;
+}
+async function saveAccount() {
+  const name = document.getElementById('account-name').value.trim();
+  if (!name) { showToast('⚠️ Account name is required', true); return; }
+  try {
+    if (editingAccountId) {
+      await apiCall(`/accounts/${editingAccountId}`, { method: 'PUT', body: JSON.stringify({ name }) });
+      showToast('✅ Account updated');
+    } else {
+      await apiCall('/accounts', { method: 'POST', body: JSON.stringify({ name }) });
+      showToast('✅ Account created');
+    }
+    closeAccountModal();
+    await loadData();
+    showManagePage();
+  } catch (e) { console.error(e); }
+}
+async function deleteAccount(id) {
+  if (!confirm('Delete this account?')) return;
+  try {
+    await apiCall(`/accounts/${id}`, { method: 'DELETE' });
+    showToast('🗑️ Account deleted');
+    await loadData();
+    showManagePage();
+  } catch (e) { console.error(e); }
+}
+
+// Category modal
+function showAddCategoryModal() {
+  editingCategoryId = null;
+  document.getElementById('category-modal-title').textContent = 'Add New Category';
+  document.getElementById('category-name').value  = '';
+  document.getElementById('category-color').value = '#7c6af7';
+  document.getElementById('category-icon').value  = '';
+  document.getElementById('category-modal').classList.add('show');
+}
+function editCategory(id, name, color, icon) {
+  editingCategoryId = id;
+  document.getElementById('category-modal-title').textContent = 'Edit Category';
+  document.getElementById('category-name').value  = name;
+  document.getElementById('category-color').value = color;
+  document.getElementById('category-icon').value  = icon;
+  document.getElementById('category-modal').classList.add('show');
+}
+function closeCategoryModal() {
+  document.getElementById('category-modal').classList.remove('show');
+  editingCategoryId = null;
+}
+async function saveCategory() {
+  const name  = document.getElementById('category-name').value.trim();
+  const color = document.getElementById('category-color').value;
+  const icon  = document.getElementById('category-icon').value.trim() || '📌';
+  if (!name) { showToast('⚠️ Category name is required', true); return; }
+  try {
+    if (editingCategoryId) {
+      await apiCall(`/categories/${editingCategoryId}`, { method: 'PUT', body: JSON.stringify({ name, color, icon }) });
+      showToast('✅ Category updated');
+    } else {
+      await apiCall('/categories', { method: 'POST', body: JSON.stringify({ name, color, icon }) });
+      showToast('✅ Category created');
+    }
+    closeCategoryModal();
+    await loadCategories();
+    showManagePage();
+  } catch (e) { console.error(e); }
+}
+async function deleteCategory(id) {
+  if (!confirm('Delete this category?')) return;
+  try {
+    await apiCall(`/categories/${id}`, { method: 'DELETE' });
+    showToast('🗑️ Category deleted');
+    await loadCategories();
+    showManagePage();
+  } catch (e) { console.error(e); }
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+
+function showExportModal() {
+  const today         = new Date();
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 86400000);
+  document.getElementById('export-start-date').value = thirtyDaysAgo.toISOString().split('T')[0];
+  document.getElementById('export-end-date').value   = today.toISOString().split('T')[0];
+  document.getElementById('export-modal').classList.add('show');
+}
+function closeExportModal() {
+  document.getElementById('export-modal').classList.remove('show');
+}
+async function exportTransactions() {
+  const start  = document.getElementById('export-start-date').value;
+  const end    = document.getElementById('export-end-date').value;
+  if (!start || !end) { showToast('⚠️ Please select both dates', true); return; }
+
+  const token = localStorage.getItem('token');
+  const url   = `${API_BASE}/export/csv?start=${start}&end=${end}&token=${encodeURIComponent(token)}`;
+  window.open(url, '_blank');
+  closeExportModal();
+  showToast('📥 CSV export started!');
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+
+let toastTimeout;
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent      = msg;
+  el.style.borderColor = isError ? 'var(--red)' : 'var(--a1)';
+  el.style.borderLeftColor = isError ? 'var(--red)' : 'var(--a1)';
+  el.classList.add('on');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => el.classList.remove('on'), 3500);
+}
+
+// ─── LOAD DATA ────────────────────────────────────────────────────────────────
+
 async function loadData() {
   if (!checkAuth()) return;
-  
+  showLoading();
+
   try {
-    const [accountsData, transactionsData, budgetsData] = await Promise.all([
+    const [accountsData, txnsData, budgetsData] = await Promise.all([
       apiCall('/accounts'),
       apiCall('/transactions'),
       apiCall('/budgets')
     ]);
-    
-    accounts = accountsData;
-    txns = transactionsData;
-    budgets = budgetsData || [];
-    
+
+    accounts = accountsData  || [];
+    txns     = txnsData      || [];
+    budgets  = budgetsData   || [];
+
     await loadCategories();
     fillAccSelect();
-    populateCategoryFilter();
-    populateBudgetCategoryFilter();
+    updateUserDisplay();
     refreshNav();
     await go(activePage);
-  } catch (error) {
-    console.error('Failed to load data:', error);
+  } catch (e) {
+    console.error('Load error:', e);
+  } finally {
+    hideLoading();
   }
 }
 
-// Calculator Variables
-let calcDisplay = '0';
-let previousValue = 0;
-let operation = null;
+// ─── CALCULATOR (modal) ───────────────────────────────────────────────────────
+
+let calcDisplay        = '0';
+let calcPrev           = 0;
+let calcOp             = null;
+let calcExpression     = '';
 let shouldResetDisplay = false;
 
-// Calculator Functions
 function toggleCalculator() {
-  const modal = document.getElementById('calculator-modal');
-  modal.classList.toggle('show');
+  document.getElementById('calculator-modal').classList.toggle('show');
 }
 
-function appendToCalc(value) {
-  const display = document.getElementById('calc-display');
-  
-  if (shouldResetDisplay) {
-    calcDisplay = '';
-    shouldResetDisplay = false;
-  }
-  
-  if (value === '.' && calcDisplay.includes('.')) {
-    return;
-  }
-  
-  calcDisplay += value;
-  display.value = calcDisplay;
+function updateCalcDisplay() {
+  document.getElementById('calc-display').value = calcDisplay;
+  document.getElementById('calc-expression').textContent = calcExpression;
+}
+
+function appendToCalc(v) {
+  if (shouldResetDisplay) { calcDisplay = ''; shouldResetDisplay = false; }
+  if (v === '.' && calcDisplay.includes('.')) return;
+  if (calcDisplay === '0' && v !== '.') calcDisplay = v;
+  else calcDisplay += v;
+  updateCalcDisplay();
 }
 
 function setOperation(op) {
-  const display = document.getElementById('calc-display');
-  
-  if (operation !== null && !shouldResetDisplay) {
-    calculate();
-  }
-  
-  previousValue = parseFloat(calcDisplay) || 0;
-  operation = op;
+  if (calcOp && !shouldResetDisplay) calculate(false);
+  calcExpression = calcDisplay + ' ' + op;
+  calcPrev = parseFloat(calcDisplay) || 0;
+  calcOp   = op;
   shouldResetDisplay = true;
+  updateCalcDisplay();
 }
 
-function calculate() {
-  const display = document.getElementById('calc-display');
-  const currentValue = parseFloat(calcDisplay) || 0;
-  let result = 0;
-  
-  switch (operation) {
-    case '+':
-      result = previousValue + currentValue;
-      break;
-    case '-':
-      result = previousValue - currentValue;
-      break;
-    case '*':
-      result = previousValue * currentValue;
-      break;
-    case '/':
-      result = currentValue !== 0 ? previousValue / currentValue : 0;
-      break;
-    default:
-      return;
+function calculate(finalize = true) {
+  const cur    = parseFloat(calcDisplay) || 0;
+  let result   = 0;
+  switch (calcOp) {
+    case '+': result = calcPrev + cur; break;
+    case '-': result = calcPrev - cur; break;
+    case '*': result = calcPrev * cur; break;
+    case '/': result = cur !== 0 ? calcPrev / cur : 0; break;
+    default:  return;
   }
-  
-  calcDisplay = result.toString();
-  display.value = calcDisplay;
-  operation = null;
+  if (finalize) { calcExpression = ''; calcOp = null; }
+  calcDisplay = parseFloat(result.toFixed(8)).toString();
   shouldResetDisplay = true;
+  updateCalcDisplay();
 }
 
 function clearCalc() {
-  calcDisplay = '0';
-  previousValue = 0;
-  operation = null;
-  shouldResetDisplay = false;
-  document.getElementById('calc-display').value = calcDisplay;
+  calcDisplay = '0'; calcPrev = 0; calcOp = null; calcExpression = '';
+  shouldResetDisplay = false; updateCalcDisplay();
 }
 
 function backspaceCalc() {
-  if (shouldResetDisplay) {
-    return;
-  }
-  
-  calcDisplay = calcDisplay.slice(0, -1);
-  if (calcDisplay === '') {
-    calcDisplay = '0';
-  }
-  document.getElementById('calc-display').value = calcDisplay;
+  if (shouldResetDisplay) return;
+  calcDisplay = calcDisplay.slice(0, -1) || '0';
+  updateCalcDisplay();
 }
 
 function setPercent() {
-  const display = document.getElementById('calc-display');
-  const currentValue = parseFloat(calcDisplay) || 0;
-  calcDisplay = (currentValue / 100).toString();
-  display.value = calcDisplay;
-  shouldResetDisplay = true;
+  calcDisplay = (parseFloat(calcDisplay) / 100).toString();
+  shouldResetDisplay = true; updateCalcDisplay();
 }
 
 function togglePlusMinus() {
-  const display = document.getElementById('calc-display');
-  const currentValue = parseFloat(calcDisplay) || 0;
-  calcDisplay = (currentValue * -1).toString();
-  display.value = calcDisplay;
+  calcDisplay = (parseFloat(calcDisplay) * -1).toString(); updateCalcDisplay();
 }
 
-// Floating Calculator Variables
-let floatingCalcDisplay = '0';
-let floatingPreviousValue = 0;
-let floatingOperation = null;
-let floatingShouldResetDisplay = false;
+function useCalcResult() {
+  const amtField = document.getElementById('f-amt');
+  if (amtField) {
+    amtField.value = parseFloat(calcDisplay) || 0;
+    toggleCalculator();
+    showToast('✅ Amount filled from calculator');
+  }
+}
 
-// Floating Calculator Functions
+// ─── FLOATING CALCULATOR ─────────────────────────────────────────────────────
+
+let fCalcDisplay = '0', fCalcPrev = 0, fCalcOp = null, fCalcReset = false;
+
 function toggleFloatingCalculator() {
-  const calculator = document.getElementById('floating-calculator');
-  calculator.classList.toggle('open');
+  document.getElementById('floating-calculator').classList.toggle('open');
 }
 
-function appendToFloatingCalc(value) {
-  const display = document.getElementById('floating-calc-display');
-  
-  if (floatingShouldResetDisplay) {
-    floatingCalcDisplay = '';
-    floatingShouldResetDisplay = false;
-  }
-  
-  if (value === '.' && floatingCalcDisplay.includes('.')) {
-    return;
-  }
-  
-  floatingCalcDisplay += value;
-  display.value = floatingCalcDisplay;
+function appendToFloatingCalc(v) {
+  if (fCalcReset) { fCalcDisplay = ''; fCalcReset = false; }
+  if (v === '.' && fCalcDisplay.includes('.')) return;
+  if (fCalcDisplay === '0' && v !== '.') fCalcDisplay = v;
+  else fCalcDisplay += v;
+  document.getElementById('floating-calc-display').value = fCalcDisplay;
 }
 
 function setFloatingOperation(op) {
-  const display = document.getElementById('floating-calc-display');
-  
-  if (floatingOperation !== null && !floatingShouldResetDisplay) {
-    calculateFloating();
-  }
-  
-  floatingPreviousValue = parseFloat(floatingCalcDisplay) || 0;
-  floatingOperation = op;
-  floatingShouldResetDisplay = true;
+  if (fCalcOp && !fCalcReset) calculateFloating();
+  fCalcPrev  = parseFloat(fCalcDisplay) || 0;
+  fCalcOp    = op; fCalcReset = true;
+  document.getElementById('floating-calc-display').value = fCalcDisplay;
 }
 
 function calculateFloating() {
-  const display = document.getElementById('floating-calc-display');
-  const currentValue = parseFloat(floatingCalcDisplay) || 0;
+  const cur = parseFloat(fCalcDisplay) || 0;
   let result = 0;
-  
-  switch (floatingOperation) {
-    case '+':
-      result = floatingPreviousValue + currentValue;
-      break;
-    case '-':
-      result = floatingPreviousValue - currentValue;
-      break;
-    case '*':
-      result = floatingPreviousValue * currentValue;
-      break;
-    case '/':
-      result = currentValue !== 0 ? floatingPreviousValue / currentValue : 0;
-      break;
-    default:
-      return;
+  switch (fCalcOp) {
+    case '+': result = fCalcPrev + cur; break;
+    case '-': result = fCalcPrev - cur; break;
+    case '*': result = fCalcPrev * cur; break;
+    case '/': result = cur !== 0 ? fCalcPrev / cur : 0; break;
+    default:  return;
   }
-  
-  floatingCalcDisplay = result.toString();
-  display.value = floatingCalcDisplay;
-  floatingOperation = null;
-  floatingShouldResetDisplay = true;
+  fCalcDisplay = parseFloat(result.toFixed(8)).toString();
+  document.getElementById('floating-calc-display').value = fCalcDisplay;
+  fCalcOp = null; fCalcReset = true;
 }
 
 function clearFloatingCalc() {
-  floatingCalcDisplay = '0';
-  floatingPreviousValue = 0;
-  floatingOperation = null;
-  floatingShouldResetDisplay = false;
-  document.getElementById('floating-calc-display').value = floatingCalcDisplay;
+  fCalcDisplay = '0'; fCalcPrev = 0; fCalcOp = null; fCalcReset = false;
+  document.getElementById('floating-calc-display').value = '0';
 }
 
 function backspaceFloatingCalc() {
-  if (floatingShouldResetDisplay) {
-    return;
-  }
-  
-  floatingCalcDisplay = floatingCalcDisplay.slice(0, -1);
-  if (floatingCalcDisplay === '') {
-    floatingCalcDisplay = '0';
-  }
-  document.getElementById('floating-calc-display').value = floatingCalcDisplay;
+  if (fCalcReset) return;
+  fCalcDisplay = fCalcDisplay.slice(0, -1) || '0';
+  document.getElementById('floating-calc-display').value = fCalcDisplay;
 }
 
 function setFloatingPercent() {
-  const display = document.getElementById('floating-calc-display');
-  const currentValue = parseFloat(floatingCalcDisplay) || 0;
-  floatingCalcDisplay = (currentValue / 100).toString();
-  display.value = floatingCalcDisplay;
-  floatingShouldResetDisplay = true;
+  fCalcDisplay = (parseFloat(fCalcDisplay) / 100).toString();
+  fCalcReset   = true;
+  document.getElementById('floating-calc-display').value = fCalcDisplay;
 }
 
 function toggleFloatingPlusMinus() {
-  const display = document.getElementById('floating-calc-display');
-  const currentValue = parseFloat(floatingCalcDisplay) || 0;
-  floatingCalcDisplay = (currentValue * -1).toString();
-  display.value = floatingCalcDisplay;
+  fCalcDisplay = (parseFloat(fCalcDisplay) * -1).toString();
+  document.getElementById('floating-calc-display').value = fCalcDisplay;
 }
 
-// Initialize
+// ─── CLOSE MODALS ON BACKGROUND CLICK ────────────────────────────────────────
+
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal')) {
+    e.target.classList.remove('show');
+  }
+});
+
+// ─── UTILITY ──────────────────────────────────────────────────────────────────
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+
 loadTheme();
 loadData();

@@ -3,175 +3,304 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Login - MoneyFlow Tracker</title>
-<link rel="stylesheet" href="styles.css">
+<title>Sign In — MoneyFlow Tracker</title>
+<meta name="description" content="Sign in to your MoneyFlow account to track income and expenses.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap">
 <style>
-.login-container {
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg:      #0a0f1e;
+  --card:    rgba(22, 30, 54, 0.9);
+  --border:  rgba(255,255,255,0.08);
+  --a1:      #8b5cf6;
+  --a2:      #ec4899;
+  --text:    #f8fafc;
+  --muted:   #94a3b8;
+  --green:   #10b981;
+  --red:     #f43f5e;
+  --gradient: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+}
+
+body {
   min-height: 100vh;
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(139,92,246,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(236,72,153,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(16,185,129,0.06) 0%, transparent 40%);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
   padding: 20px;
+  -webkit-font-smoothing: antialiased;
 }
 
-.login-card {
+/* Animated background dots */
+.bg-dots {
+  position: fixed; inset: 0; z-index: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+.wrapper {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 440px;
+}
+
+/* Logo strip above card */
+.brand {
+  text-align: center; margin-bottom: 28px;
+}
+.brand-logo {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800; font-size: 2rem;
+  background: var(--gradient);
+  background-clip: text; -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+  display: inline-block;
+}
+.brand-tagline {
+  color: var(--muted); font-size: 0.85rem; margin-top: 6px;
+}
+
+/* Card */
+.card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 24px;
   padding: 40px;
-  width: 100%;
-  max-width: 400px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  animation: cardIn 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-.login-header {
-  text-align: center;
-  margin-bottom: 30px;
+.card-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: 1.5rem;
+  margin-bottom: 6px;
+}
+.card-sub {
+  color: var(--muted); font-size: 0.875rem; margin-bottom: 32px;
 }
 
-.login-logo {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 1.8rem;
-  background: linear-gradient(135deg,var(--a1),var(--a2));
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 8px;
-}
-
-.login-subtitle {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.fld {
-  margin-bottom: 20px;
-}
-
+/* Fields */
+.fld { margin-bottom: 20px; }
 .fld label {
-  display: block;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin-bottom: 8px;
+  display: block; font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 8px;
+  font-family: 'Outfit', sans-serif;
 }
-
+.input-wrap { position: relative; }
+.input-wrap .input-icon {
+  position: absolute; left: 16px; top: 50%;
+  transform: translateY(-50%); font-size: 1rem;
+  pointer-events: none;
+}
 .fld input {
   width: 100%;
-  background: #0f0f17;
+  background: rgba(0,0,0,0.25);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   color: var(--text);
-  padding: 12px 16px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.9rem;
-  transition: border-color 0.2s;
+  padding: 14px 16px 14px 44px;
+  font-family: 'Inter', sans-serif; font-size: 0.95rem;
+  transition: all 0.25s ease;
 }
-
 .fld input:focus {
-  outline: none;
-  border-color: var(--a1);
+  outline: none; border-color: var(--a1);
+  box-shadow: 0 0 0 4px rgba(139,92,246,0.15);
+  background: rgba(0,0,0,0.35);
+}
+.fld input::placeholder { color: rgba(148,163,184,0.5); }
+
+/* Error / success messages */
+#message { margin-bottom: 20px; }
+.error-msg {
+  background: rgba(244,63,94,0.1);
+  border: 1px solid rgba(244,63,94,0.4);
+  color: var(--red); padding: 12px 16px;
+  border-radius: 10px; font-size: 0.875rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.success-msg {
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.4);
+  color: var(--green); padding: 12px 16px;
+  border-radius: 10px; font-size: 0.875rem;
 }
 
-.btn-login {
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  background: linear-gradient(135deg,var(--a1),var(--a2));
-  color: #fff;
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 0.88rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition: opacity 0.2s, transform 0.15s;
-  margin-bottom: 20px;
+/* Submit button */
+.btn-submit {
+  width: 100%; padding: 15px; border: none; border-radius: 12px;
+  cursor: pointer; background: var(--gradient); color: white;
+  font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 0.95rem;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  transition: all 0.25s ease;
+  box-shadow: 0 8px 20px rgba(139,92,246,0.3);
+  margin-top: 4px;
+  position: relative; overflow: hidden;
+}
+.btn-submit::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+  opacity: 0; transition: opacity 0.25s;
+}
+.btn-submit:hover::after { opacity: 1; }
+.btn-submit:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(236,72,153,0.4); }
+.btn-submit:active { transform: translateY(0); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+/* Divider */
+.divider {
+  display: flex; align-items: center; gap: 16px;
+  margin: 24px 0; color: var(--muted); font-size: 0.8rem;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--border);
 }
 
-.btn-login:hover {
-  opacity: 0.85;
-  transform: scale(1.01);
+/* Footer link */
+.card-footer {
+  text-align: center; color: var(--muted);
+  font-size: 0.875rem; margin-top: 24px;
 }
+.card-footer a {
+  color: var(--a1); text-decoration: none; font-weight: 600;
+  transition: color 0.2s;
+}
+.card-footer a:hover { color: var(--a2); }
 
-.btn-login:active {
-  transform: scale(0.98);
+/* Stats strip */
+.stats-strip {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 16px; margin-top: 28px;
 }
-
-.login-footer {
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.8rem;
+.stat-item {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px 12px; text-align: center;
 }
-
-.login-footer a {
-  color: var(--a1);
-  text-decoration: none;
-  font-weight: 500;
+.stat-num {
+  font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.4rem;
+  background: var(--gradient); background-clip: text;
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
 }
-
-.login-footer a:hover {
-  text-decoration: underline;
-}
-
-.error-message {
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid var(--red);
-  color: var(--red);
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 0.8rem;
-  text-align: center;
-}
-
-.success-message {
-  background: rgba(74, 222, 128, 0.1);
-  border: 1px solid var(--green);
-  color: var(--green);
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 0.8rem;
-  text-align: center;
-}
+.stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 4px; font-weight: 500; }
 </style>
 </head>
 <body>
 
-<div class="login-container">
-  <div class="login-card">
-    <div class="login-header">
-      <div class="login-logo">₹ MoneyFlow</div>
-      <div class="login-subtitle">Sign in to your account</div>
-    </div>
-    
+<div class="bg-dots"></div>
+
+<div class="wrapper">
+  <div class="brand">
+    <div class="brand-logo">₹ MoneyFlow</div>
+    <div class="brand-tagline">Your personal finance tracker</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Welcome back 👋</div>
+    <div class="card-sub">Sign in to your account to continue</div>
+
     <div id="message"></div>
-    
-    <form id="loginForm" onsubmit="handleLogin(event)">
+
+    <form id="loginForm" onsubmit="handleLogin(event)" novalidate>
       <div class="fld">
         <label for="email">Email Address</label>
-        <input type="email" id="email" name="email" placeholder="Enter your email" required>
+        <div class="input-wrap">
+          <span class="input-icon">📧</span>
+          <input type="email" id="email" name="email"
+            placeholder="you@example.com" required autocomplete="email">
+        </div>
       </div>
-      
+
       <div class="fld">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Enter your password" required>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password" id="password" name="password"
+            placeholder="Your password" required autocomplete="current-password">
+        </div>
       </div>
-      
-      <button type="submit" class="btn-login">Sign In</button>
+
+      <button type="submit" class="btn-submit" id="submit-btn">Sign In</button>
     </form>
-    
-    <div class="login-footer">
-      Don't have an account? <a href="signup.html">Sign up here</a>
+
+    <div class="card-footer">
+      Don't have an account? <a href="signup.html">Create one free →</a>
+    </div>
+  </div>
+
+  <div class="stats-strip">
+    <div class="stat-item">
+      <div class="stat-num">∞</div>
+      <div class="stat-label">Transactions</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">📊</div>
+      <div class="stat-label">Charts</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">🔒</div>
+      <div class="stat-label">Secure</div>
     </div>
   </div>
 </div>
 
-<script src="login.js"></script>
+<script>
+  // Redirect if already logged in
+  if (localStorage.getItem('token')) {
+    window.location.href = '/';
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('submit-btn');
+    const msgEl    = document.getElementById('message');
+
+    if (!email || !password) {
+      msgEl.innerHTML = '<div class="error-msg">⚠️ Please fill in both fields</div>';
+      return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    msgEl.innerHTML = '';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      msgEl.innerHTML = '<div class="success-msg">✅ Signed in! Redirecting…</div>';
+      setTimeout(() => window.location.href = '/', 500);
+    } catch (err) {
+      msgEl.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  }
+</script>
 </body>
 </html>

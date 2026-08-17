@@ -3,195 +3,340 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign Up - MoneyFlow Tracker</title>
-<link rel="stylesheet" href="styles.css">
+<title>Create Account — MoneyFlow Tracker</title>
+<meta name="description" content="Create your free MoneyFlow account and start tracking your finances today.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap">
 <style>
-.signup-container {
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg:      #0a0f1e;
+  --card:    rgba(22, 30, 54, 0.9);
+  --border:  rgba(255,255,255,0.08);
+  --a1:      #8b5cf6;
+  --a2:      #ec4899;
+  --text:    #f8fafc;
+  --muted:   #94a3b8;
+  --green:   #10b981;
+  --red:     #f43f5e;
+  --gradient: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+}
+
+body {
   min-height: 100vh;
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 80% 50%, rgba(139,92,246,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 20% 20%, rgba(236,72,153,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 90%, rgba(16,185,129,0.06) 0%, transparent 40%);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
   padding: 20px;
+  -webkit-font-smoothing: antialiased;
 }
 
-.signup-card {
+.bg-dots {
+  position: fixed; inset: 0; z-index: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+
+.wrapper {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 460px;
+}
+
+.brand {
+  text-align: center; margin-bottom: 28px;
+}
+.brand-logo {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800; font-size: 2rem;
+  background: var(--gradient);
+  background-clip: text; -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em; display: inline-block;
+}
+.brand-tagline { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
+
+.card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 40px;
-  width: 100%;
-  max-width: 400px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  border-radius: 24px; padding: 40px;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  animation: cardIn 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-.signup-header {
-  text-align: center;
-  margin-bottom: 30px;
-}
+.card-title { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.5rem; margin-bottom: 6px; }
+.card-sub   { color: var(--muted); font-size: 0.875rem; margin-bottom: 32px; }
 
-.signup-logo {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 1.8rem;
-  background: linear-gradient(135deg,var(--a1),var(--a2));
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 8px;
-}
-
-.signup-subtitle {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.fld {
-  margin-bottom: 20px;
-}
-
+.fld { margin-bottom: 20px; }
 .fld label {
-  display: block;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  margin-bottom: 8px;
+  display: block; font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 8px;
+  font-family: 'Outfit', sans-serif;
 }
-
+.input-wrap { position: relative; }
+.input-wrap .input-icon {
+  position: absolute; left: 16px; top: 50%;
+  transform: translateY(-50%); font-size: 1rem; pointer-events: none;
+}
 .fld input {
   width: 100%;
-  background: #0f0f17;
+  background: rgba(0,0,0,0.25);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text);
-  padding: 12px 16px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.9rem;
-  transition: border-color 0.2s;
+  border-radius: 12px; color: var(--text);
+  padding: 14px 16px 14px 44px;
+  font-family: 'Inter', sans-serif; font-size: 0.95rem;
+  transition: all 0.25s ease;
 }
-
 .fld input:focus {
-  outline: none;
-  border-color: var(--a1);
+  outline: none; border-color: var(--a1);
+  box-shadow: 0 0 0 4px rgba(139,92,246,0.15);
+  background: rgba(0,0,0,0.35);
+}
+.fld input::placeholder { color: rgba(148,163,184,0.5); }
+.fld input.valid   { border-color: rgba(16,185,129,0.5); }
+.fld input.invalid { border-color: rgba(244,63,94,0.5); }
+
+.field-hint {
+  font-size: 0.75rem; color: var(--muted); margin-top: 6px;
+  display: flex; align-items: center; gap: 5px;
 }
 
-.btn-signup {
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  background: linear-gradient(135deg,var(--a1),var(--a2));
-  color: #fff;
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 0.88rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition: opacity 0.2s, transform 0.15s;
-  margin-bottom: 20px;
+#message { margin-bottom: 20px; }
+.error-msg {
+  background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.4);
+  color: var(--red); padding: 12px 16px; border-radius: 10px; font-size: 0.875rem;
+}
+.success-msg {
+  background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.4);
+  color: var(--green); padding: 12px 16px; border-radius: 10px; font-size: 0.875rem;
 }
 
-.btn-signup:hover {
-  opacity: 0.85;
-  transform: scale(1.01);
+/* Password strength meter */
+.strength-bar {
+  height: 4px; border-radius: 2px; background: var(--border); margin-top: 8px;
+  overflow: hidden;
+}
+.strength-fill {
+  height: 100%; border-radius: 2px; transition: width 0.4s ease, background 0.4s ease;
+  width: 0;
 }
 
-.btn-signup:active {
-  transform: scale(0.98);
+/* Perks list */
+.perks {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px;
 }
-
-.signup-footer {
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.8rem;
+.perk {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.82rem; color: var(--muted); font-weight: 500;
 }
+.perk-icon { font-size: 1rem; flex-shrink: 0; }
 
-.signup-footer a {
-  color: var(--a1);
-  text-decoration: none;
-  font-weight: 500;
+.btn-submit {
+  width: 100%; padding: 15px; border: none; border-radius: 12px;
+  cursor: pointer; background: var(--gradient); color: white;
+  font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 0.95rem;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  transition: all 0.25s ease;
+  box-shadow: 0 8px 20px rgba(139,92,246,0.3); margin-top: 4px;
+  position: relative; overflow: hidden;
 }
-
-.signup-footer a:hover {
-  text-decoration: underline;
+.btn-submit::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+  opacity: 0; transition: opacity 0.25s;
 }
+.btn-submit:hover::after { opacity: 1; }
+.btn-submit:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(236,72,153,0.4); }
+.btn-submit:active { transform: translateY(0); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-.error-message {
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid var(--red);
-  color: var(--red);
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 0.8rem;
-  text-align: center;
+.card-footer {
+  text-align: center; color: var(--muted);
+  font-size: 0.875rem; margin-top: 24px;
 }
+.card-footer a { color: var(--a1); text-decoration: none; font-weight: 600; transition: color 0.2s; }
+.card-footer a:hover { color: var(--a2); }
 
-.success-message {
-  background: rgba(74, 222, 128, 0.1);
-  border: 1px solid var(--green);
-  color: var(--green);
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  font-size: 0.8rem;
-  text-align: center;
-}
-
-.password-requirements {
-  font-size: 0.7rem;
-  color: var(--muted);
-  margin-top: 5px;
-  line-height: 1.4;
+.terms {
+  text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 14px;
 }
 </style>
 </head>
 <body>
 
-<div class="signup-container">
-  <div class="signup-card">
-    <div class="signup-header">
-      <div class="signup-logo">MoneyFlow</div>
-      <div class="signup-subtitle">Create your account</div>
+<div class="bg-dots"></div>
+
+<div class="wrapper">
+  <div class="brand">
+    <div class="brand-logo">₹ MoneyFlow</div>
+    <div class="brand-tagline">Start tracking your finances for free</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Create your account 🚀</div>
+    <div class="card-sub">Join thousands managing their money smarter</div>
+
+    <div class="perks">
+      <div class="perk"><span class="perk-icon">📊</span> Visual charts</div>
+      <div class="perk"><span class="perk-icon">🎯</span> Budget tracking</div>
+      <div class="perk"><span class="perk-icon">🏦</span> Multi-account</div>
+      <div class="perk"><span class="perk-icon">📥</span> CSV export</div>
     </div>
-    
+
     <div id="message"></div>
-    
-    <form id="signupForm" onsubmit="handleSignup(event)">
+
+    <form id="signupForm" onsubmit="handleSignup(event)" novalidate>
       <div class="fld">
         <label for="name">Full Name</label>
-        <input type="text" id="name" name="name" placeholder="Enter your full name" required>
-      </div>
-      
-      <div class="fld">
-        <label for="email">Email Address</label>
-        <input type="email" id="email" name="email" placeholder="Enter your email" required>
-      </div>
-      
-      <div class="fld">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Create a password" required minlength="6">
-        <div class="password-requirements">
-          Password must be at least 6 characters long
+        <div class="input-wrap">
+          <span class="input-icon">👤</span>
+          <input type="text" id="name" name="name"
+            placeholder="Your full name" required autocomplete="name"
+            oninput="validateName(this)">
         </div>
       </div>
-      
+
+      <div class="fld">
+        <label for="email">Email Address</label>
+        <div class="input-wrap">
+          <span class="input-icon">📧</span>
+          <input type="email" id="email" name="email"
+            placeholder="you@example.com" required autocomplete="email"
+            oninput="validateEmail(this)">
+        </div>
+      </div>
+
+      <div class="fld">
+        <label for="password">Password</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password" id="password" name="password"
+            placeholder="Min. 6 characters" required minlength="6"
+            autocomplete="new-password" oninput="checkStrength(this)">
+        </div>
+        <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+        <div class="field-hint" id="strength-hint">Enter a password</div>
+      </div>
+
       <div class="fld">
         <label for="confirmPassword">Confirm Password</label>
-        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm your password" required>
+        <div class="input-wrap">
+          <span class="input-icon">🔑</span>
+          <input type="password" id="confirmPassword" name="confirmPassword"
+            placeholder="Repeat your password" required autocomplete="new-password"
+            oninput="validateConfirm(this)">
+        </div>
       </div>
-      
-      <button type="submit" class="btn-signup">Create Account</button>
+
+      <button type="submit" class="btn-submit" id="submit-btn">Create Account</button>
     </form>
-    
-    <div class="signup-footer">
-      Already have an account? <a href="login.html">Sign in here</a>
+
+    <div class="card-footer">
+      Already have an account? <a href="login.html">Sign in →</a>
     </div>
+    <div class="terms">By creating an account you agree to our terms of service.</div>
   </div>
 </div>
 
-<script src="signup.js"></script>
+<script>
+  if (localStorage.getItem('token')) window.location.href = '/';
+
+  function validateName(el) {
+    el.classList.toggle('valid',   el.value.trim().length >= 2);
+    el.classList.toggle('invalid', el.value.trim().length > 0 && el.value.trim().length < 2);
+  }
+
+  function validateEmail(el) {
+    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(el.value);
+    el.classList.toggle('valid',   ok);
+    el.classList.toggle('invalid', el.value.length > 0 && !ok);
+  }
+
+  function checkStrength(el) {
+    const v   = el.value;
+    const fill = document.getElementById('strength-fill');
+    const hint = document.getElementById('strength-hint');
+    let score = 0;
+    if (v.length >= 6) score++;
+    if (v.length >= 10) score++;
+    if (/[A-Z]/.test(v)) score++;
+    if (/[0-9]/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+
+    const levels = [
+      { pct: '0%',   color: '#f43f5e', label: 'Enter a password' },
+      { pct: '20%',  color: '#f43f5e', label: '🔴 Very weak' },
+      { pct: '40%',  color: '#f59e0b', label: '🟡 Weak' },
+      { pct: '60%',  color: '#f59e0b', label: '🟡 Fair' },
+      { pct: '80%',  color: '#10b981', label: '🟢 Strong' },
+      { pct: '100%', color: '#10b981', label: '🟢 Very strong' },
+    ];
+    const lvl = levels[score];
+    fill.style.width      = lvl.pct;
+    fill.style.background = lvl.color;
+    hint.textContent      = lvl.label;
+  }
+
+  function validateConfirm(el) {
+    const match = el.value === document.getElementById('password').value;
+    el.classList.toggle('valid',   match && el.value.length > 0);
+    el.classList.toggle('invalid', !match && el.value.length > 0);
+  }
+
+  async function handleSignup(e) {
+    e.preventDefault();
+    const name     = document.getElementById('name').value.trim();
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirm  = document.getElementById('confirmPassword').value;
+    const btn      = document.getElementById('submit-btn');
+    const msgEl    = document.getElementById('message');
+
+    if (!name || !email || !password) {
+      msgEl.innerHTML = '<div class="error-msg">⚠️ Please fill in all fields</div>'; return;
+    }
+    if (password.length < 6) {
+      msgEl.innerHTML = '<div class="error-msg">⚠️ Password must be at least 6 characters</div>'; return;
+    }
+    if (password !== confirm) {
+      msgEl.innerHTML = '<div class="error-msg">⚠️ Passwords do not match</div>'; return;
+    }
+
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    msgEl.innerHTML = '';
+
+    try {
+      const res  = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Signup failed');
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      msgEl.innerHTML = '<div class="success-msg">✅ Account created! Redirecting…</div>';
+      setTimeout(() => window.location.href = '/', 700);
+    } catch (err) {
+      msgEl.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+      btn.disabled = false; btn.textContent = 'Create Account';
+    }
+  }
+</script>
 </body>
 </html>
