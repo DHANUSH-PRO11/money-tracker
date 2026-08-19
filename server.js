@@ -214,38 +214,47 @@ app.post('/api/auth/signup', async (req, res) => {
     return res.status(400).json({ error: 'All fields are required' });
   }
 
+  const cleanName = name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+
   try {
-    db.get('SELECT id FROM users WHERE email = ?', [email], async (err, row) => {
+    db.get('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail], async (err, row) => {
       if (err) return res.status(500).json({ error: 'Database error' });
-      if (row) return res.status(400).json({ error: 'User already exists' });
+      if (row) return res.status(400).json({ error: 'User already exists with this email' });
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+      try {
+        const hashedPassword = await bcrypt.hash(password, 10);
 
-      db.run(
-        'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-        [name, email, hashedPassword],
-        function(err) {
-          if (err) return res.status(500).json({ error: 'Failed to create user' });
+        db.run(
+          'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+          [cleanName, cleanEmail, hashedPassword],
+          function(err) {
+            if (err) return res.status(500).json({ error: 'Failed to create user' });
 
-          const userId = this.lastID;
+            const userId = this.lastID;
 
-          // Create default accounts for new user
-          const defaultAccounts = ['GPAY', 'CASH', 'FANPAY'];
-          const stmt = db.prepare('INSERT INTO accounts (name, user_id) VALUES (?, ?)');
-          defaultAccounts.forEach(a => stmt.run(a, userId));
-          stmt.finalize();
+            // Create default accounts for new user
+            const defaultAccounts = ['GPAY', 'CASH', 'FANPAY'];
+            const stmt = db.prepare('INSERT INTO accounts (name, user_id) VALUES (?, ?)');
+            defaultAccounts.forEach(a => stmt.run(a, userId));
+            stmt.finalize();
 
-          const token = jwt.sign({ id: userId, email, name }, JWT_SECRET, { expiresIn: '7d' });
+            const token = jwt.sign({ id: userId, email: cleanEmail, name: cleanName }, JWT_SECRET, { expiresIn: '7d' });
 
-          res.status(201).json({
-            message: 'User created successfully',
-            token,
-            user: { id: userId, name, email }
-          });
-        }
-      );
+            res.status(201).json({
+              message: 'User created successfully',
+              token,
+              user: { id: userId, name: cleanName, email: cleanEmail }
+            });
+          }
+        );
+      } catch (hashErr) {
+        console.error('Hash error:', hashErr);
+        res.status(500).json({ error: 'Server error during registration' });
+      }
     });
   } catch (error) {
+    console.error('Signup error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -257,25 +266,44 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+  const cleanEmail = email.trim().toLowerCase();
 
-    const isValid = await bcrypt.compare(password, user.password);
-    if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
+  try {
+    db.get('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail], async (err, user) => {
+      if (err) {
+        console.error('DB error during login:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+      try {
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) {
+          return res.status(401).json({ error: 'Invalid email or password' });
+        }
 
-    res.json({
-      message: 'Login successful',
-      token,
-      user: { id: user.id, name: user.name, email: user.email }
+        const token = jwt.sign(
+          { id: user.id, email: user.email, name: user.name },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+
+        res.json({
+          message: 'Login successful',
+          token,
+          user: { id: user.id, name: user.name, email: user.email }
+        });
+      } catch (bcryptErr) {
+        console.error('Bcrypt compare error:', bcryptErr);
+        res.status(500).json({ error: 'Authentication error' });
+      }
     });
-  });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 app.get('/api/auth/verify', authenticateToken, (req, res) => {
