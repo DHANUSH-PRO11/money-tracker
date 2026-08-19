@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -42,11 +43,26 @@ function authenticateToken(req, res, next) {
 }
 
 // Database setup
-const db = new sqlite3.Database('./moneyflow.db', (err) => {
+const isVercel = process.env.VERCEL === '1' || process.env.NOW_REGION;
+const dbPath = isVercel ? '/tmp/moneyflow.db' : path.join(__dirname, 'moneyflow.db');
+
+// If running in serverless /tmp and seed DB exists, copy it over
+if (isVercel && !fs.existsSync(dbPath)) {
+  const seedDb = path.join(__dirname, 'moneyflow.db');
+  if (fs.existsSync(seedDb)) {
+    try {
+      fs.copyFileSync(seedDb, dbPath);
+    } catch (e) {
+      console.error('Error copying seed database to /tmp:', e);
+    }
+  }
+}
+
+const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error opening database:', err.message);
   } else {
-    console.log('Connected to SQLite database');
+    console.log('Connected to SQLite database at:', dbPath);
     initializeDatabase();
   }
 });
@@ -846,7 +862,11 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`MoneyFlow Tracker running on http://localhost:${PORT}`);
-});
+// Start server locally (or on non-serverless environments)
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`MoneyFlow Tracker running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
