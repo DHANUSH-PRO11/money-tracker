@@ -561,7 +561,7 @@ app.get('/api/transactions', authenticateToken, (req, res) => {
   if (categoryId){ query += ' AND t.category_id = ?'; params.push(categoryId); }
   if (accountId) { query += ' AND t.account_id = ?'; params.push(accountId); }
 
-  query += ' ORDER BY t.date DESC, t.created_at DESC';
+  query += ' ORDER BY t.date DESC, t.created_at DESC, t.id DESC';
 
   db.all(query, params, (err, rows) =>
     err ? res.status(500).json({ error: err.message }) : res.json(rows)
@@ -590,12 +590,21 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
         [date, account_id, category_id || null, reason, amount, type],
         function(err) {
           if (err) return res.status(500).json({ error: err.message });
-          res.json({
-            id: this.lastID, date,
-            account_id: parseInt(account_id),
-            category_id: category_id ? parseInt(category_id) : null,
-            reason, amount: parseFloat(amount), type
-          });
+          const insertId = this.lastID;
+
+          db.get(
+            `SELECT t.*, a.name as account_name, c.name as category_name,
+                    c.color as category_color, c.icon as category_icon
+             FROM transactions t
+             JOIN accounts a ON t.account_id = a.id
+             LEFT JOIN categories c ON t.category_id = c.id
+             WHERE t.id = ?`,
+            [insertId],
+            (err, row) => {
+              if (err) return res.status(500).json({ error: err.message });
+              res.json(row);
+            }
+          );
         }
       );
     }
@@ -852,7 +861,7 @@ app.get('/api/export/csv', authenticateToken, (req, res) => {
     query += ' AND t.date BETWEEN ? AND ?';
     params.push(start, end);
   }
-  query += ' ORDER BY t.date DESC';
+  query += ' ORDER BY t.date DESC, t.created_at DESC, t.id DESC';
 
   db.all(query, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });

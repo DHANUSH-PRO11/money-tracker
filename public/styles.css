@@ -1104,6 +1104,15 @@ tbody td {
   font-weight: 500;
 }
 
+.txn-time {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  opacity: 0.8;
+  font-weight: 400;
+  margin-top: 3px;
+  letter-spacing: 0.02em;
+}
+
 .badge {
   display: inline-block;
   padding: 4px 12px;

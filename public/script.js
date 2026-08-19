@@ -15,7 +15,7 @@ let curFilter   = 'all';
 let curType     = 'out';
 let charts      = {};
 let activePage  = localStorage.getItem('activePage') || 'home';
-let dateRangeDays = 30; // default filter for dashboard
+let dateRangeDays = 'all'; // default filter for dashboard ('all' shows all records)
 
 // ─── NUMBER FORMATTER ─────────────────────────────────────────────────────────
 
@@ -341,6 +341,70 @@ function pickType(t) {
   document.getElementById('tp-in').className  = 'topt' + (t === 'in'  ? ' in'  : '');
 }
 
+/** Sort transactions by date (descending), then entry time/created_at (descending), then id (descending) */
+function sortTransactions(list) {
+  if (!Array.isArray(list)) return [];
+  return list.sort((a, b) => {
+    // 1. Compare entry date descending (YYYY-MM-DD)
+    const dateA = (a.date || '').slice(0, 10);
+    const dateB = (b.date || '').slice(0, 10);
+    if (dateA !== dateB) {
+      return dateB.localeCompare(dateA);
+    }
+
+    // 2. Compare created_at timestamp descending
+    const timeA = a.created_at || '';
+    const timeB = b.created_at || '';
+    if (timeA && timeB && timeA !== timeB) {
+      return timeB.localeCompare(timeA);
+    }
+
+    // 3. Fallback by id descending
+    return (b.id || 0) - (a.id || 0);
+  });
+}
+
+/** Safely parse and format transaction date and time */
+function formatTxnDate(dateStr, createdAt) {
+  if (!dateStr) return { dateDisplay: '—', day: '—', timeDisplay: '' };
+
+  const cleanDate = String(dateStr).slice(0, 10);
+  const parts = cleanDate.split('-');
+  let d;
+  if (parts.length === 3) {
+    d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  } else {
+    d = new Date(dateStr);
+  }
+
+  const dayIndex = d.getDay();
+  const day = !isNaN(dayIndex) && DAYS[dayIndex] ? DAYS[dayIndex].slice(0, 3) : '—';
+
+  let timeDisplay = '';
+  const timestamp = createdAt || (String(dateStr).length > 10 ? String(dateStr) : '');
+  if (timestamp) {
+    const tParts = timestamp.includes('T') ? timestamp.split('T') : timestamp.split(' ');
+    if (tParts.length > 1) {
+      const timeStr = tParts[1].slice(0, 5); // "HH:MM"
+      const [hh, mm] = timeStr.split(':');
+      if (hh !== undefined && mm !== undefined) {
+        const hour = parseInt(hh, 10);
+        if (!isNaN(hour)) {
+          const ampm = hour >= 12 ? 'PM' : 'AM';
+          const h12 = hour % 12 || 12;
+          timeDisplay = `${h12}:${mm} ${ampm}`;
+        }
+      }
+    }
+  }
+
+  return {
+    dateDisplay: cleanDate,
+    day,
+    timeDisplay
+  };
+}
+
 async function addEntry() {
   const date = document.getElementById('f-date').value;
   const aid  = parseInt(document.getElementById('f-acc').value);
@@ -366,17 +430,26 @@ async function addEntry() {
       body: JSON.stringify({ date, account_id: aid, category_id: cid, reason: rsn, amount: amt, type: curType })
     });
 
-    // Optimistically add to local list
-    const cat = categories.find(c => c.id === cid);
-    const acc = accounts.find(a => a.id === aid);
-    newTxn.account_name   = acc ? acc.name : '';
-    newTxn.category_name  = cat ? cat.name : null;
-    newTxn.category_icon  = cat ? cat.icon : null;
-    newTxn.category_color = cat ? cat.color : null;
-    txns.unshift(newTxn);
+    if (newTxn) {
+      const cat = categories.find(c => c.id === (newTxn.category_id || cid));
+      const acc = accounts.find(a => a.id === (newTxn.account_id || aid));
+      if (!newTxn.account_name && acc) newTxn.account_name = acc.name;
+      if (!newTxn.category_name && cat) newTxn.category_name = cat.name;
+      if (!newTxn.category_icon && cat) newTxn.category_icon = cat.icon;
+      if (!newTxn.category_color && cat) newTxn.category_color = cat.color;
+
+      txns.unshift(newTxn);
+      sortTransactions(txns);
+    }
 
     refreshNav();
     drawHomeRecent();
+
+    // If Dashboard is currently in DOM, keep it in sync
+    const dashPage = document.getElementById('pg-dash');
+    if (dashPage && dashPage.classList.contains('on')) {
+      drawDash();
+    }
 
     document.getElementById('f-reason').value = '';
     document.getElementById('f-amt').value    = '';
@@ -394,20 +467,34 @@ function drawHomeRecent() {
   const container = document.getElementById('home-recent');
   if (!container) return;
 
+  sortTransactions(txns);
   const recent = txns.slice(0, 5);
-  if (!recent.length) { container.innerHTML = ''; return; }
+  if (!recent.length) {
+    container.innerHTML = `
+      <div class="home-recent-title">Recent Activity</div>
+      <div style="text-align:center;padding:24px 16px;color:var(--text-muted);font-size:0.88rem;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-lg);margin-top:12px;">
+        No recent activity yet. Add your first entry above!
+      </div>`;
+    return;
+  }
 
   container.innerHTML = `
     <div class="home-recent-title">Recent Activity</div>
     ${recent.map(t => {
       const cat = categories.find(c => c.id === t.category_id);
-      const icon = cat ? cat.icon : (t.type === 'in' ? '💰' : '💸');
+      const icon = t.category_icon || (cat ? cat.icon : (t.type === 'in' ? '💰' : '💸'));
+      const acc = accounts.find(a => a.id === t.account_id);
+      const accName = t.account_name || (acc ? acc.name : '');
+      const parsed = formatTxnDate(t.date, t.created_at);
+      const metaTime = parsed.timeDisplay ? ` · ${parsed.timeDisplay}` : '';
+      const metaAcc = accName ? ` · ${escHtml(accName)}` : '';
+
       return `
       <div class="recent-item">
         <div class="recent-icon">${icon}</div>
         <div class="recent-info">
           <div class="recent-reason">${escHtml(t.reason)}</div>
-          <div class="recent-meta">${t.date} · ${t.account_name || ''}</div>
+          <div class="recent-meta">${parsed.dateDisplay}${metaTime}${metaAcc}</div>
         </div>
         <div class="recent-amount ${t.type === 'in' ? 'gi' : 'ri'}">
           ${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}
@@ -420,10 +507,16 @@ function drawHomeRecent() {
 
 async function drawDash() {
   try {
-    const [accountBalances, summary] = await Promise.all([
+    const [accountBalances, summary, txnsData] = await Promise.all([
       apiCall('/account-balances'),
-      apiCall('/summary')
+      apiCall('/summary'),
+      apiCall('/transactions')
     ]);
+
+    if (Array.isArray(txnsData)) {
+      txns = txnsData;
+      sortTransactions(txns);
+    }
 
     // Account cards
     document.getElementById('acc-grid').innerHTML = accountBalances.length === 0
@@ -441,7 +534,7 @@ async function drawDash() {
 
     // Filter buttons by account
     document.getElementById('filt-btns').innerHTML = accounts.map(a =>
-      `<button class="fbtn ${curFilter == a.id ? 'on' : ''}" onclick="filt(${a.id}, this)">${a.name}</button>`
+      `<button class="fbtn ${curFilter == a.id ? 'on' : ''}" onclick="filt(${a.id}, this)">${escHtml(a.name)}</button>`
     ).join('');
 
     // Summary stats
@@ -461,7 +554,7 @@ async function drawDash() {
 
 function applyDateRangeFilter() {
   const val = document.getElementById('date-range-filter').value;
-  dateRangeDays = val === 'all' ? null : parseInt(val);
+  dateRangeDays = val === 'all' ? 'all' : parseInt(val, 10);
   drawTable();
 }
 
@@ -479,38 +572,52 @@ function drawTable() {
   const catFilter = document.getElementById('cat-filter');
   if (!tbody || !empty || !srch || !catFilter) return;
 
-  const srchVal    = srch.value.toLowerCase();
+  const srchVal    = (srch.value || '').toLowerCase().trim();
   const catVal     = catFilter.value;
   const now        = new Date();
-  const cutoff     = dateRangeDays
-    ? new Date(now.getTime() - dateRangeDays * 86400000).toISOString().slice(0, 10)
+  const cutoff     = (dateRangeDays && dateRangeDays !== 'all')
+    ? new Date(now.getTime() - parseInt(dateRangeDays, 10) * 86400000).toISOString().slice(0, 10)
     : null;
 
+  sortTransactions(txns);
+
   const rows = txns.filter(t => {
-    const matchSearch  = t.reason.toLowerCase().includes(srchVal) ||
-                         (t.account_name||'').toLowerCase().includes(srchVal) ||
-                         (t.category_name||'').toLowerCase().includes(srchVal);
-    const matchCat     = !catVal || t.category_id == catVal;
-    const matchAccount = curFilter === 'all' || t.account_id == curFilter;
-    const matchDate    = !cutoff || t.date >= cutoff;
+    const reasonMatch  = (t.reason || '').toLowerCase().includes(srchVal);
+    const accMatch     = (t.account_name || '').toLowerCase().includes(srchVal);
+    const catMatch     = (t.category_name || '').toLowerCase().includes(srchVal);
+    const matchSearch  = !srchVal || reasonMatch || accMatch || catMatch;
+
+    const matchCat     = !catVal || String(t.category_id) === String(catVal);
+    const matchAccount = curFilter === 'all' || String(t.account_id) === String(curFilter);
+    const txnDate      = (t.date || '').slice(0, 10);
+    const matchDate    = !cutoff || txnDate >= cutoff;
     return matchSearch && matchCat && matchAccount && matchDate;
   });
 
-  if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
   empty.style.display = 'none';
 
   tbody.innerHTML = rows.map(t => {
-    const d   = new Date(t.date + 'T00:00:00');
-    const day = DAYS[d.getDay()];
+    const parsed = formatTxnDate(t.date, t.created_at);
     const acc = accounts.find(a => a.id === t.account_id);
     const idx = accounts.findIndex(a => a.id === t.account_id);
+    const badgeIdx = idx >= 0 ? idx % 4 : 0;
     const catLabel = t.category_icon
       ? `${t.category_icon} ${escHtml(t.category_name)}`
       : (t.category_name ? escHtml(t.category_name) : '<span style="color:var(--muted)">—</span>');
+    const accName = t.account_name || (acc ? acc.name : 'Unknown');
+
     return `<tr>
-      <td class="dt">${t.date}</td>
-      <td class="dy">${day.slice(0,3)}</td>
-      <td><span class="badge b${idx % 4}">${acc ? escHtml(acc.name) : '?'}</span></td>
+      <td class="dt">
+        <span>${parsed.dateDisplay}</span>
+        ${parsed.timeDisplay ? `<div class="txn-time">${parsed.timeDisplay}</div>` : ''}
+      </td>
+      <td class="dy">${parsed.day}</td>
+      <td><span class="badge b${badgeIdx}">${escHtml(accName)}</span></td>
       <td class="cat-badge">${catLabel}</td>
       <td title="${escHtml(t.reason)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.reason)}</td>
       <td>${t.type === 'in' ? '<span class="tin">IN</span>' : '<span class="tout">OUT</span>'}</td>
@@ -525,6 +632,7 @@ async function deleteEntry(id) {
   try {
     await apiCall(`/transactions/${id}`, { method: 'DELETE' });
     txns = txns.filter(t => t.id !== id);
+    sortTransactions(txns);
     drawDash();
     drawHomeRecent();
     refreshNav();
@@ -1104,6 +1212,7 @@ async function loadData() {
     accounts = accountsData  || [];
     txns     = txnsData      || [];
     budgets  = budgetsData   || [];
+    sortTransactions(txns);
 
     await Promise.all([loadCategories(), loadUserProfile()]);
     fillAccSelect();
