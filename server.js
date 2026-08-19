@@ -109,19 +109,6 @@ function initializeDatabase() {
           console.log('Accounts table migrated successfully.');
         });
       }
-
-      // Backfill default accounts for existing users who have 0 accounts
-      db.all('SELECT id FROM users WHERE id NOT IN (SELECT DISTINCT user_id FROM accounts)', (err, users) => {
-        if (!err && users && users.length > 0) {
-          const defaultAccounts = ['GPAY', 'CASH', 'FANPAY'];
-          const stmt = db.prepare('INSERT OR IGNORE INTO accounts (name, user_id) VALUES (?, ?)');
-          users.forEach(u => {
-            defaultAccounts.forEach(a => stmt.run(a, u.id));
-          });
-          stmt.finalize();
-          console.log(`Backfilled default accounts for ${users.length} users.`);
-        }
-      });
     });
 
     // Categories table (global, shared)
@@ -232,12 +219,6 @@ app.post('/api/auth/signup', async (req, res) => {
             if (err) return res.status(500).json({ error: 'Failed to create user' });
 
             const userId = this.lastID;
-
-            // Create default accounts for new user
-            const defaultAccounts = ['GPAY', 'CASH', 'FANPAY'];
-            const stmt = db.prepare('INSERT INTO accounts (name, user_id) VALUES (?, ?)');
-            defaultAccounts.forEach(a => stmt.run(a, userId));
-            stmt.finalize();
 
             const token = jwt.sign({ id: userId, email: cleanEmail, name: cleanName }, JWT_SECRET, { expiresIn: '7d' });
 

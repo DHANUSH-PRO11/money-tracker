@@ -2091,6 +2091,41 @@ input[type="text"]#category-icon {
   gap: 16px;
 }
 
+.input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.input-wrap input.has-toggle {
+  padding-right: 44px !important;
+}
+
+.input-wrap .toggle-pwd {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s, transform 0.15s;
+}
+
+.input-wrap .toggle-pwd:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.input-wrap .toggle-pwd:active {
+  transform: translateY(-50%) scale(0.92);
+}
+
 @media (max-width: 600px) {
   .row2 {
     grid-template-columns: 1fr;

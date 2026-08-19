@@ -207,6 +207,22 @@ function switchSettingsTab(tab) {
   }
 }
 
+// Toggle password visibility
+function togglePassword(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const isPwd = input.type === 'password';
+  input.type = isPwd ? 'text' : 'password';
+  const openEye = btn.querySelector('.eye-open');
+  const closedEye = btn.querySelector('.eye-closed');
+  if (openEye && closedEye) {
+    openEye.style.display = isPwd ? 'none' : 'block';
+    closedEye.style.display = isPwd ? 'block' : 'none';
+  }
+  btn.title = isPwd ? 'Hide password' : 'Show password';
+  btn.setAttribute('aria-label', isPwd ? 'Hide password' : 'Show password');
+}
+
 async function saveUserProfile() {
   const name = document.getElementById('settings-user-name').value.trim();
   const email = document.getElementById('settings-user-email').value.trim();
@@ -331,6 +347,11 @@ async function addEntry() {
   const cid  = document.getElementById('f-cat').value ? parseInt(document.getElementById('f-cat').value) : null;
   const rsn  = document.getElementById('f-reason').value.trim();
   const amt  = parseFloat(document.getElementById('f-amt').value);
+
+  if (!aid || isNaN(aid)) {
+    showToast('⚠️ Please create an account first in Manage (⚙️)', true);
+    return;
+  }
 
   if (!date || !rsn || isNaN(amt) || amt <= 0) {
     showToast('⚠️ Fill all fields correctly', true); return;
@@ -890,7 +911,7 @@ function fillAccSelect() {
   if (!sel) return;
   sel.innerHTML = accounts.length
     ? accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('')
-    : '<option value="">No accounts</option>';
+    : '<option value="">-- No accounts (Create in Manage) --</option>';
 }
 
 function populateCategoryFilter() {
@@ -905,7 +926,9 @@ async function showManagePage() {
     await Promise.all([loadCategories(), loadUserProfile()]);
     const accountBalances = await apiCall('/account-balances');
 
-    document.getElementById('accounts-list').innerHTML = accountBalances.map(a => `
+    document.getElementById('accounts-list').innerHTML = accountBalances.length === 0
+      ? '<div class="budget-empty" style="padding:24px 12px;"><div class="ico">🏦</div><div style="font-weight:600;">No accounts created yet</div><div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">Click "+ Add Account" above to create your first account (e.g. Cash, Bank, GPay)</div></div>'
+      : accountBalances.map(a => `
       <div class="manage-item">
         <div class="manage-item-info">
           <div class="manage-item-name">🏦 ${escHtml(a.name)}</div>
