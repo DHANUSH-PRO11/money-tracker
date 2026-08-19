@@ -68,8 +68,45 @@ function initializeDatabase() {
       name TEXT NOT NULL,
       user_id INTEGER NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users (id)
+      FOREIGN KEY (user_id) REFERENCES users (id),
+      UNIQUE(name, user_id)
     )`);
+
+    // Migrate accounts table if it was created with global unique constraint on name
+    db.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'", (err, row) => {
+      if (!err && row && row.sql && row.sql.includes('name TEXT NOT NULL UNIQUE')) {
+        console.log('Migrating accounts table to composite UNIQUE(name, user_id)...');
+        db.serialize(() => {
+          db.run('PRAGMA foreign_keys=off');
+          db.run(`CREATE TABLE accounts_temp (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            UNIQUE(name, user_id)
+          )`);
+          db.run(`INSERT INTO accounts_temp (id, name, user_id, created_at) SELECT id, name, user_id, created_at FROM accounts`);
+          db.run(`DROP TABLE accounts`);
+          db.run(`ALTER TABLE accounts_temp RENAME TO accounts`);
+          db.run('PRAGMA foreign_keys=on');
+          console.log('Accounts table migrated successfully.');
+        });
+      }
+
+      // Backfill default accounts for existing users who have 0 accounts
+      db.all('SELECT id FROM users WHERE id NOT IN (SELECT DISTINCT user_id FROM accounts)', (err, users) => {
+        if (!err && users && users.length > 0) {
+          const defaultAccounts = ['GPAY', 'CASH', 'FANPAY'];
+          const stmt = db.prepare('INSERT OR IGNORE INTO accounts (name, user_id) VALUES (?, ?)');
+          users.forEach(u => {
+            defaultAccounts.forEach(a => stmt.run(a, u.id));
+          });
+          stmt.finalize();
+          console.log(`Backfilled default accounts for ${users.length} users.`);
+        }
+      });
+    });
 
     // Categories table (global, shared)
     db.run(`CREATE TABLE IF NOT EXISTS categories (
@@ -229,6 +266,87 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ message: 'Token is valid', user: req.user });
 });
 
+// ─── USER PROFILE & SETTINGS ──────────────────────────────────────────────────
+
+// Get current user profile
+app.get('/api/user/profile', authenticateToken, (req, res) => {
+  db.get(
+    'SELECT id, name, email, created_at FROM users WHERE id = ?',
+    [req.user.id],
+    (err, user) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json(user);
+    }
+  );
+});
+
+// Update user profile (name, email)
+app.put('/api/user/profile', authenticateToken, (req, res) => {
+  const { name, email } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+  if (!email || !email.trim()) return res.status(400).json({ error: 'Email is required' });
+
+  const cleanName = name.trim();
+  const cleanEmail = email.trim().toLowerCase();
+
+  db.get('SELECT id FROM users WHERE email = ? AND id != ?', [cleanEmail, req.user.id], (err, existing) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (existing) return res.status(400).json({ error: 'Email is already taken by another account' });
+
+    db.run(
+      'UPDATE users SET name = ?, email = ? WHERE id = ?',
+      [cleanName, cleanEmail, req.user.id],
+      function(err) {
+        if (err) return res.status(500).json({ error: 'Failed to update profile' });
+
+        const token = jwt.sign(
+          { id: req.user.id, email: cleanEmail, name: cleanName },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+
+        res.json({
+          message: 'Profile updated successfully',
+          token,
+          user: { id: req.user.id, name: cleanName, email: cleanEmail }
+        });
+      }
+    );
+  });
+});
+
+// Update user password
+app.put('/api/user/password', authenticateToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required' });
+  }
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+  }
+
+  try {
+    db.get('SELECT password FROM users WHERE id = ?', [req.user.id], async (err, user) => {
+      if (err) return res.status(500).json({ error: 'Database error' });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const isValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isValid) {
+        return res.status(400).json({ error: 'Current password is incorrect' });
+      }
+
+      const hashed = await bcrypt.hash(newPassword, 10);
+      db.run('UPDATE users SET password = ? WHERE id = ?', [hashed, req.user.id], function(err) {
+        if (err) return res.status(500).json({ error: 'Failed to update password' });
+        res.json({ message: 'Password updated successfully' });
+      });
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ─── ACCOUNTS ─────────────────────────────────────────────────────────────────
 
 // Get all accounts for current user
@@ -243,18 +361,28 @@ app.get('/api/accounts', authenticateToken, (req, res) => {
 // Create new account
 app.post('/api/accounts', authenticateToken, (req, res) => {
   const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'Account name is required' });
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Account name is required' });
+  const cleanName = name.trim().toUpperCase();
 
-  db.run(
-    'INSERT INTO accounts (name, user_id) VALUES (?, ?)',
-    [name.toUpperCase(), req.user.id],
-    function(err) {
-      if (err) {
-        if (err.message.includes('UNIQUE constraint failed'))
-          return res.status(400).json({ error: 'Account name already exists' });
-        return res.status(500).json({ error: err.message });
-      }
-      res.json({ id: this.lastID, name: name.toUpperCase(), user_id: req.user.id });
+  db.get(
+    'SELECT id FROM accounts WHERE UPPER(name) = ? AND user_id = ?',
+    [cleanName, req.user.id],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (row) return res.status(400).json({ error: 'Account name already exists' });
+
+      db.run(
+        'INSERT INTO accounts (name, user_id) VALUES (?, ?)',
+        [cleanName, req.user.id],
+        function(err) {
+          if (err) {
+            if (err.message.includes('UNIQUE constraint failed'))
+              return res.status(400).json({ error: 'Account name already exists' });
+            return res.status(500).json({ error: err.message });
+          }
+          res.json({ id: this.lastID, name: cleanName, user_id: req.user.id });
+        }
+      );
     }
   );
 });
@@ -262,19 +390,29 @@ app.post('/api/accounts', authenticateToken, (req, res) => {
 // Update account
 app.put('/api/accounts/:id', authenticateToken, (req, res) => {
   const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'Account name is required' });
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Account name is required' });
+  const cleanName = name.trim().toUpperCase();
 
-  db.run(
-    'UPDATE accounts SET name = ? WHERE id = ? AND user_id = ?',
-    [name.toUpperCase(), req.params.id, req.user.id],
-    function(err) {
-      if (err) {
-        if (err.message.includes('UNIQUE constraint failed'))
-          return res.status(400).json({ error: 'Account name already exists' });
-        return res.status(500).json({ error: err.message });
-      }
-      if (this.changes === 0) return res.status(404).json({ error: 'Account not found' });
-      res.json({ id: req.params.id, name: name.toUpperCase() });
+  db.get(
+    'SELECT id FROM accounts WHERE UPPER(name) = ? AND user_id = ? AND id != ?',
+    [cleanName, req.user.id, req.params.id],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (row) return res.status(400).json({ error: 'Account name already exists' });
+
+      db.run(
+        'UPDATE accounts SET name = ? WHERE id = ? AND user_id = ?',
+        [cleanName, req.params.id, req.user.id],
+        function(err) {
+          if (err) {
+            if (err.message.includes('UNIQUE constraint failed'))
+              return res.status(400).json({ error: 'Account name already exists' });
+            return res.status(500).json({ error: err.message });
+          }
+          if (this.changes === 0) return res.status(404).json({ error: 'Account not found' });
+          res.json({ id: req.params.id, name: cleanName });
+        }
+      );
     }
   );
 });

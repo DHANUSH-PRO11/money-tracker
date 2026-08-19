@@ -104,7 +104,9 @@ async function apiCall(endpoint, options = {}) {
 function showLoading()  { document.getElementById('loading-overlay').classList.remove('hidden'); }
 function hideLoading()  { document.getElementById('loading-overlay').classList.add('hidden'); }
 
-// ─── USER GREETING ────────────────────────────────────────────────────────────
+// ─── USER GREETING & SETTINGS ─────────────────────────────────────────────────
+
+let currentUserProfile = null;
 
 function updateUserDisplay() {
   const userJson = localStorage.getItem('user');
@@ -112,8 +114,162 @@ function updateUserDisplay() {
   try {
     const user = JSON.parse(userJson);
     const pill = document.getElementById('nav-user');
-    if (pill && user.name) pill.textContent = '👤 ' + user.name.split(' ')[0];
+    if (pill && user.name) {
+      pill.textContent = '👤 ' + user.name.split(' ')[0];
+      pill.title = `Logged in as: ${user.name} (${user.email || ''})`;
+    }
   } catch (e) { /* ignore */ }
+}
+
+async function loadUserProfile() {
+  try {
+    const user = await apiCall('/user/profile');
+    if (user) {
+      currentUserProfile = user;
+      localStorage.setItem('user', JSON.stringify({ id: user.id, name: user.name, email: user.email }));
+      updateUserDisplay();
+
+      const pName = document.getElementById('manage-profile-name');
+      const pEmail = document.getElementById('manage-profile-email');
+      const pAvatar = document.getElementById('manage-profile-avatar');
+      const pDate = document.getElementById('manage-profile-date');
+
+      if (pName) pName.textContent = user.name;
+      if (pEmail) pEmail.textContent = user.email;
+      if (pAvatar) {
+        const initials = user.name.split(' ').map(n => n[0]).filter(Boolean).join('').substring(0, 2).toUpperCase();
+        pAvatar.textContent = initials || '👤';
+      }
+      if (pDate && user.created_at) {
+        const d = new Date(user.created_at);
+        const formatted = isNaN(d) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        pDate.textContent = formatted ? `Member since ${formatted}` : 'Member';
+      }
+    }
+  } catch (e) {
+    console.error('Error loading user profile:', e);
+  }
+}
+
+function openUserSettingsModal(tab = 'profile') {
+  const userJson = localStorage.getItem('user');
+  let currentName = '';
+  let currentEmail = '';
+  if (userJson) {
+    try {
+      const u = JSON.parse(userJson);
+      currentName = u.name || '';
+      currentEmail = u.email || '';
+    } catch (e) {}
+  }
+  if (currentUserProfile) {
+    currentName = currentUserProfile.name || currentName;
+    currentEmail = currentUserProfile.email || currentEmail;
+  }
+
+  const nameInput = document.getElementById('settings-user-name');
+  const emailInput = document.getElementById('settings-user-email');
+  if (nameInput) nameInput.value = currentName;
+  if (emailInput) emailInput.value = currentEmail;
+
+  // Clear password inputs
+  const curPwd = document.getElementById('settings-current-pwd');
+  const newPwd = document.getElementById('settings-new-pwd');
+  const confPwd = document.getElementById('settings-confirm-pwd');
+  if (curPwd) curPwd.value = '';
+  if (newPwd) newPwd.value = '';
+  if (confPwd) confPwd.value = '';
+
+  switchSettingsTab(tab);
+  document.getElementById('user-settings-modal').classList.add('show');
+}
+
+function closeUserSettingsModal() {
+  document.getElementById('user-settings-modal').classList.remove('show');
+}
+
+function switchSettingsTab(tab) {
+  const tabProf = document.getElementById('set-tab-profile');
+  const tabSec = document.getElementById('set-tab-security');
+  const panProf = document.getElementById('set-panel-profile');
+  const panSec = document.getElementById('set-panel-security');
+
+  if (tab === 'security') {
+    if (tabProf) tabProf.classList.remove('on');
+    if (tabSec) tabSec.classList.add('on');
+    if (panProf) panProf.style.display = 'none';
+    if (panSec) panSec.style.display = 'block';
+  } else {
+    if (tabProf) tabProf.classList.add('on');
+    if (tabSec) tabSec.classList.remove('on');
+    if (panProf) panProf.style.display = 'block';
+    if (panSec) panSec.style.display = 'none';
+  }
+}
+
+async function saveUserProfile() {
+  const name = document.getElementById('settings-user-name').value.trim();
+  const email = document.getElementById('settings-user-email').value.trim();
+
+  if (!name || !email) {
+    showToast('⚠️ Please enter both name and email', true);
+    return;
+  }
+
+  try {
+    const res = await apiCall('/user/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ name, email })
+    });
+
+    if (res && res.token) {
+      localStorage.setItem('token', res.token);
+    }
+    if (res && res.user) {
+      localStorage.setItem('user', JSON.stringify(res.user));
+      currentUserProfile = res.user;
+    }
+
+    updateUserDisplay();
+    await loadUserProfile();
+    closeUserSettingsModal();
+    showToast('✅ Profile updated successfully!');
+  } catch (e) {
+    console.error('Failed to update user profile:', e);
+  }
+}
+
+async function saveUserPassword() {
+  const currentPassword = document.getElementById('settings-current-pwd').value;
+  const newPassword = document.getElementById('settings-new-pwd').value;
+  const confirmPassword = document.getElementById('settings-confirm-pwd').value;
+
+  if (!currentPassword || !newPassword) {
+    showToast('⚠️ Please enter current and new password', true);
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    showToast('⚠️ New password must be at least 6 characters', true);
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    showToast('⚠️ Passwords do not match', true);
+    return;
+  }
+
+  try {
+    await apiCall('/user/password', {
+      method: 'PUT',
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+
+    closeUserSettingsModal();
+    showToast('🔑 Password updated successfully!');
+  } catch (e) {
+    console.error('Failed to update password:', e);
+  }
 }
 
 // ─── NAV BALANCE ──────────────────────────────────────────────────────────────
@@ -746,7 +902,7 @@ function populateCategoryFilter() {
 
 async function showManagePage() {
   try {
-    await loadCategories();
+    await Promise.all([loadCategories(), loadUserProfile()]);
     const accountBalances = await apiCall('/account-balances');
 
     document.getElementById('accounts-list').innerHTML = accountBalances.map(a => `
@@ -926,7 +1082,7 @@ async function loadData() {
     txns     = txnsData      || [];
     budgets  = budgetsData   || [];
 
-    await loadCategories();
+    await Promise.all([loadCategories(), loadUserProfile()]);
     fillAccSelect();
     updateUserDisplay();
     refreshNav();

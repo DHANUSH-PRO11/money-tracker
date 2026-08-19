@@ -22,6 +22,7 @@
   <div class="nav-actions">
     <div class="bal-pill" id="nav-bal" style="color:var(--green)">₹0.00</div>
     <div class="user-pill" id="nav-user" title="Logged in user">👤</div>
+    <button class="icon-btn" onclick="openUserSettingsModal()" title="Edit Profile & Account Settings">⚙️</button>
     <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme" id="theme-btn">🌙</button>
     <button class="logout-btn" onclick="logout()">Sign Out</button>
   </div>
@@ -233,6 +234,26 @@
 <div class="page" id="pg-manage">
   <div class="dash">
     <div class="manage-layout">
+      <!-- User Profile & Settings -->
+      <div class="manage-section user-settings-section" style="grid-column: 1 / -1;">
+        <div class="sec-title"><span>User Profile & Account Settings</span></div>
+        <div class="manage-card profile-settings-card">
+          <div class="profile-card-content">
+            <div class="profile-avatar-wrap">
+              <div class="profile-avatar" id="manage-profile-avatar">👤</div>
+            </div>
+            <div class="profile-info-wrap">
+              <h3 id="manage-profile-name">User Profile</h3>
+              <p class="profile-email" id="manage-profile-email">Loading user details…</p>
+              <span class="profile-badge" id="manage-profile-date">Member</span>
+            </div>
+            <div class="profile-actions-wrap">
+              <button class="btn-primary-gradient" onclick="openUserSettingsModal()">⚙️ Edit Profile & Password</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Accounts -->
       <div class="manage-section">
         <div class="sec-title"><span>Manage Accounts</span></div>
@@ -414,6 +435,60 @@
     <div class="modal-footer">
       <button class="btn-cancel" onclick="closeBudgetModal()">Cancel</button>
       <button class="btn-save" onclick="saveBudget()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Settings Modal -->
+<div class="modal" id="user-settings-modal">
+  <div class="modal-content user-settings-modal-content">
+    <div class="modal-header">
+      <h3>⚙️ User Account Settings</h3>
+      <button class="modal-close" onclick="closeUserSettingsModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Tabs inside settings modal: Profile vs Security -->
+      <div class="settings-tabs">
+        <button class="settings-tab on" id="set-tab-profile" onclick="switchSettingsTab('profile')">👤 Edit Profile</button>
+        <button class="settings-tab" id="set-tab-security" onclick="switchSettingsTab('security')">🔒 Change Password</button>
+      </div>
+
+      <!-- Tab 1: Profile Information -->
+      <div class="settings-panel on" id="set-panel-profile">
+        <form id="form-user-profile" onsubmit="event.preventDefault(); saveUserProfile();">
+          <div class="fld">
+            <label for="settings-user-name">Full Name</label>
+            <input type="text" id="settings-user-name" required placeholder="Enter your full name">
+          </div>
+          <div class="fld">
+            <label for="settings-user-email">Email Address</label>
+            <input type="email" id="settings-user-email" required placeholder="name@example.com">
+          </div>
+          <button type="submit" class="btn-save" style="width:100%;margin-top:14px;">💾 Save Profile Changes</button>
+        </form>
+      </div>
+
+      <!-- Tab 2: Security & Password -->
+      <div class="settings-panel" id="set-panel-security" style="display:none;">
+        <form id="form-user-password" onsubmit="event.preventDefault(); saveUserPassword();">
+          <div class="fld">
+            <label for="settings-current-pwd">Current Password</label>
+            <input type="password" id="settings-current-pwd" required placeholder="Enter current password">
+          </div>
+          <div class="fld">
+            <label for="settings-new-pwd">New Password</label>
+            <input type="password" id="settings-new-pwd" required minlength="6" placeholder="At least 6 characters">
+          </div>
+          <div class="fld">
+            <label for="settings-confirm-pwd">Confirm New Password</label>
+            <input type="password" id="settings-confirm-pwd" required minlength="6" placeholder="Repeat new password">
+          </div>
+          <button type="submit" class="btn-save" style="width:100%;margin-top:14px;">🔐 Update Password</button>
+        </form>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeUserSettingsModal()">Close</button>
     </div>
   </div>
 </div>

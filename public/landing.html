@@ -3,26 +3,244 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MoneyFlow Tracker</title>
+<title>MoneyFlow Tracker — Smart Personal Finance & Wealth Dashboard</title>
+<meta name="description" content="Take control of your personal wealth. Track expenses, analyze income trends, manage multi-account budgets, and make smarter financial decisions with MoneyFlow Tracker.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<style>
+  .landing-body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 60px 24px;
+    overflow-x: hidden;
+  }
+
+  .landing-hero {
+    max-width: 960px;
+    text-align: center;
+    position: relative;
+    z-index: 10;
+  }
+
+  .landing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(139, 92, 246, 0.12);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #c4b5fd;
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-family: 'Outfit', sans-serif;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+    animation: badgePulse 3s infinite alternate;
+  }
+
+  @keyframes badgePulse {
+    0% { transform: translateY(0); box-shadow: 0 0 15px rgba(139, 92, 246, 0.2); }
+    100% { transform: translateY(-2px); box-shadow: 0 0 25px rgba(236, 72, 153, 0.35); }
+  }
+
+  .landing-title {
+    font-family: 'Outfit', sans-serif;
+    font-size: 4rem;
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -0.04em;
+    margin-bottom: 20px;
+    color: #ffffff;
+  }
+
+  .landing-title span {
+    background: var(--gradient);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .landing-desc {
+    font-size: 1.2rem;
+    color: var(--text-muted);
+    max-width: 680px;
+    margin: 0 auto 36px;
+    font-weight: 400;
+    line-height: 1.7;
+  }
+
+  .landing-cta-group {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 48px;
+  }
+
+  .btn-cta-primary {
+    background: var(--gradient);
+    color: white;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800;
+    font-size: 1.05rem;
+    padding: 16px 36px;
+    border-radius: 14px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 10px 30px rgba(139, 92, 246, 0.4);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn-cta-primary:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 14px 40px rgba(236, 72, 153, 0.5);
+  }
+
+  .btn-cta-secondary {
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border-hover);
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding: 16px 32px;
+    border-radius: 14px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    text-decoration: none;
+  }
+
+  .btn-cta-secondary:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--a1);
+    transform: translateY(-2px);
+  }
+
+  .feature-pills {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .f-pill {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .landing-preview {
+    margin-top: 50px;
+    width: 100%;
+    max-width: 900px;
+    background: var(--card);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    box-shadow: var(--shadow-lg), 0 0 60px rgba(139, 92, 246, 0.18);
+    backdrop-filter: var(--glass-blur);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    text-align: left;
+  }
+
+  .preview-stat {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+  }
+
+  .preview-stat-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-family: 'Outfit', sans-serif;
+    margin-bottom: 6px;
+  }
+
+  .preview-stat-val {
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.7rem;
+    font-weight: 900;
+  }
+
+  @media (max-width: 768px) {
+    .landing-title { font-size: 2.8rem; }
+    .landing-preview { grid-template-columns: 1fr; }
+  }
+</style>
 </head>
-<body>
-<div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Inter', sans-serif;">
-  <div style="text-align: center; padding: 40px; background: var(--card); border-radius: 20px; box-shadow: 0 4px 16px var(--shadow);">
-    <h1 style="font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem; margin-bottom: 20px; color: var(--text);">₹ MoneyFlow</h1>
-    <p style="color: var(--muted); margin-bottom: 30px;">Personal Finance Tracker</p>
-    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-      <button onclick="window.location.href='login.html'" style="background: var(--gradient); color: white; border: none; padding: 12px 32px; border-radius: 10px; font-family: 'Syne', sans-serif; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.3s ease;">
-        Login
-      </button>
-      <button onclick="window.location.href='signup.html'" style="background: var(--card); color: var(--text); border: 2px solid var(--border); padding: 12px 32px; border-radius: 10px; font-family: 'Syne', sans-serif; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.3s ease;">
-        Sign Up
-      </button>
-      <button onclick="window.location.href='index.html'" style="background: var(--a3); color: white; border: none; padding: 12px 32px; border-radius: 10px; font-family: 'Syne', sans-serif; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.3s ease;">
-        Skip to App
-      </button>
+<body class="landing-body">
+
+<div class="landing-hero">
+  <div class="landing-badge">✨ Next-Gen Personal Wealth Management</div>
+  <h1 class="landing-title">Master Your Wealth.<br><span>Track Every Rupee.</span></h1>
+  <p class="landing-desc">
+    An ultra-fluid, glassmorphic finance tracker engineered for clarity, speed, and real-time budgeting insights across all your accounts.
+  </p>
+
+  <div class="landing-cta-group">
+    <button onclick="window.location.href='index.html'" class="btn-cta-primary">
+      🚀 Launch Dashboard
+    </button>
+    <button onclick="window.location.href='login.html'" class="btn-cta-secondary">
+      Sign In
+    </button>
+    <button onclick="window.location.href='signup.html'" class="btn-cta-secondary">
+      Create Free Account
+    </button>
+  </div>
+
+  <div class="feature-pills">
+    <div class="f-pill">📊 Visual Trend Charts</div>
+    <div class="f-pill">🎯 Smart Budgets & Alerts</div>
+    <div class="f-pill">🏦 Multi-Account Tracking</div>
+    <div class="f-pill">🧮 Built-in Smart Calculator</div>
+    <div class="f-pill">⚡ Instant CSV/JSON Export</div>
+  </div>
+
+  <div class="landing-preview">
+    <div class="preview-stat">
+      <div class="preview-stat-label">Total Net Worth</div>
+      <div class="preview-stat-val" style="color: var(--green);">₹2,48,900.00</div>
+    </div>
+    <div class="preview-stat">
+      <div class="preview-stat-label">Monthly Savings Rate</div>
+      <div class="preview-stat-val" style="color: #c4b5fd;">68.4%</div>
+    </div>
+    <div class="preview-stat">
+      <div class="preview-stat-label">Budget Adherence</div>
+      <div class="preview-stat-val" style="color: #38bdf8;">On Track 🎯</div>
     </div>
   </div>
 </div>
+
 </body>
 </html>
