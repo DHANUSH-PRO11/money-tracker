@@ -399,13 +399,13 @@ body {
 
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      msgEl.innerHTML = '<div class="success-msg">✅ Account ready! Redirecting…</div>';
-      setTimeout(() => window.location.href = '/', 300);
+      msgEl.innerHTML = '<div class="success-msg">✅ Account ready! Opening dashboard…</div>';
+      window.location.replace('/index.html');
     } catch (err) {
       console.error('Google auth processing error:', err);
       localStorage.setItem('token', 'google_session_' + Date.now());
       localStorage.setItem('user', JSON.stringify({ id: 1, name, email }));
-      window.location.href = '/';
+      window.location.replace('/index.html');
     }
   }
 

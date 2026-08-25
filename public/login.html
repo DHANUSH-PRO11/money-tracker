@@ -404,16 +404,15 @@ body {
 
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-      msgEl.innerHTML = '<div class="success-msg">✅ Signed in with Google! Redirecting…</div>';
-      setTimeout(() => {
-        window.location.href = '/';
-      }, 300);
+      msgEl.innerHTML = '<div class="success-msg">✅ Signed in! Opening dashboard…</div>';
+      
+      // Immediate redirect to dashboard
+      window.location.replace('/index.html');
     } catch (err) {
       console.error('Google auth processing error:', err);
-      // Even if unexpected error occurs, proceed with Supabase authenticated user
       localStorage.setItem('token', 'google_session_' + Date.now());
       localStorage.setItem('user', JSON.stringify({ id: 1, name, email }));
-      window.location.href = '/';
+      window.location.replace('/index.html');
     }
   }
 
