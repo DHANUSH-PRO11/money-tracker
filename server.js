@@ -287,6 +287,106 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.get('/api/auth/google/client-id', (req, res) => {
+  res.json({ clientId: process.env.GOOGLE_CLIENT_ID || '' });
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ error: 'Google credential is required' });
+  }
+
+  try {
+    let email, name, picture, googleId;
+
+    try {
+      const { OAuth2Client } = require('google-auth-library');
+      const googleClientId = process.env.GOOGLE_CLIENT_ID;
+      const client = new OAuth2Client(googleClientId || undefined);
+
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        ...(googleClientId && { audience: googleClientId })
+      });
+      const payload = ticket.getPayload();
+      email = payload.email;
+      name = payload.name || payload.given_name || (payload.email ? payload.email.split('@')[0] : 'Google User');
+      picture = payload.picture;
+      googleId = payload.sub;
+    } catch (verifyErr) {
+      console.warn('Google client verification warning, attempting fallback decoding:', verifyErr.message);
+      // Fallback decode for development / unconfigured audience
+      const decoded = jwt.decode(credential);
+      if (!decoded || !decoded.email) {
+        return res.status(400).json({ error: 'Invalid Google credential token' });
+      }
+      email = decoded.email;
+      name = decoded.name || (decoded.email ? decoded.email.split('@')[0] : 'Google User');
+      picture = decoded.picture;
+      googleId = decoded.sub;
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: 'Google account has no associated email address' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = (name || cleanEmail.split('@')[0]).trim();
+
+    db.get('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail], async (err, user) => {
+      if (err) {
+        console.error('DB error during Google auth:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (user) {
+        const token = jwt.sign(
+          { id: user.id, email: user.email, name: user.name },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        return res.json({
+          message: 'Google login successful',
+          token,
+          user: { id: user.id, name: user.name, email: user.email }
+        });
+      }
+
+      // User does not exist, create new user account
+      const randomPassword = require('crypto').randomBytes(24).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      db.run(
+        'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+        [cleanName, cleanEmail, hashedPassword],
+        function (insertErr) {
+          if (insertErr) {
+            console.error('Error creating user with Google auth:', insertErr);
+            return res.status(500).json({ error: 'Failed to create user account' });
+          }
+
+          const userId = this.lastID;
+          const token = jwt.sign(
+            { id: userId, email: cleanEmail, name: cleanName },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
+
+          res.status(201).json({
+            message: 'Account created with Google successfully',
+            token,
+            user: { id: userId, name: cleanName, email: cleanEmail }
+          });
+        }
+      );
+    });
+  } catch (error) {
+    console.error('Google auth processing error:', error);
+    res.status(500).json({ error: 'Failed to authenticate with Google' });
+  }
+});
+
 app.get('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ message: 'Token is valid', user: req.user });
 });

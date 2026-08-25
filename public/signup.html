@@ -7,6 +7,7 @@
 <meta name="description" content="Create your free MoneyFlow account and start tracking your finances today.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -21,6 +22,57 @@
   --green:   #10b981;
   --red:     #f43f5e;
   --gradient: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+}
+
+/* Google Auth Button */
+.google-auth-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 13px 18px;
+  border-radius: 12px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-bottom: 2px;
+  backdrop-filter: blur(10px);
+}
+.google-auth-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+.google-auth-btn:active {
+  transform: translateY(0);
+}
+.google-auth-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+#g_id_render_wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+  min-height: 44px;
+}
+
+/* Divider */
+.divider {
+  display: flex; align-items: center; gap: 16px;
+  margin: 20px 0; color: var(--muted); font-size: 0.8rem;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--border);
 }
 
 body {
@@ -218,6 +270,21 @@ body {
 
     <div id="message"></div>
 
+    <div id="google-btn-container" style="margin-bottom: 20px;">
+      <button type="button" class="google-auth-btn" id="google-custom-btn" onclick="triggerGoogleSignIn()">
+        <svg viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span>Sign up with Google</span>
+      </button>
+      <div id="g_id_render_wrapper" style="display:none;"></div>
+    </div>
+
+    <div class="divider"><span>or with email</span></div>
+
     <form id="signupForm" onsubmit="handleSignup(event)" novalidate>
       <div class="fld">
         <label for="name">Full Name</label>
@@ -297,6 +364,91 @@ body {
   }
 
   if (localStorage.getItem('token')) window.location.href = '/';
+
+  let googleClientId = '';
+
+  async function initGoogleAuth() {
+    try {
+      const res = await fetch('/api/auth/google/client-id');
+      const data = await res.json();
+      googleClientId = data.clientId || '';
+
+      if (window.google && window.google.accounts && googleClientId) {
+        google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleResponse,
+          auto_select: false,
+          cancel_on_tap_outside: true
+        });
+
+        const renderContainer = document.getElementById('g_id_render_wrapper');
+        const customBtn = document.getElementById('google-custom-btn');
+        if (renderContainer) {
+          renderContainer.style.display = 'flex';
+          if (customBtn) customBtn.style.display = 'none';
+          google.accounts.id.renderButton(renderContainer, {
+            theme: 'filled_black',
+            size: 'large',
+            shape: 'rectangular',
+            text: 'signup_with',
+            width: 360,
+            logo_alignment: 'left'
+          });
+        }
+
+        google.accounts.id.prompt();
+      }
+    } catch (e) {
+      console.warn('Google Auth init check:', e);
+    }
+  }
+
+  function triggerGoogleSignIn() {
+    if (window.google && window.google.accounts && googleClientId) {
+      google.accounts.id.prompt();
+    } else {
+      const msgEl = document.getElementById('message');
+      msgEl.innerHTML = '<div class="error-msg">ℹ️ To enable Google Sign-Up, please configure your <code>GOOGLE_CLIENT_ID</code> in environment variables or register using email & password below.</div>';
+    }
+  }
+
+  async function handleGoogleResponse(response) {
+    const msgEl = document.getElementById('message');
+    if (!response || !response.credential) {
+      msgEl.innerHTML = '<div class="error-msg">❌ Google sign-up was cancelled or failed.</div>';
+      return;
+    }
+
+    msgEl.innerHTML = '<div class="success-msg">🔄 Connecting with Google…</div>';
+
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: response.credential })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Google signup failed');
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      msgEl.innerHTML = '<div class="success-msg">✅ Account ready! Redirecting to dashboard…</div>';
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 400);
+    } catch (err) {
+      msgEl.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+    }
+  }
+
+  window.addEventListener('load', () => {
+    if (window.google) {
+      initGoogleAuth();
+    } else {
+      setTimeout(initGoogleAuth, 600);
+    }
+  });
 
   function validateName(el) {
     el.classList.toggle('valid',   el.value.trim().length >= 2);
