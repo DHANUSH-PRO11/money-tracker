@@ -3,91 +3,40 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Create Account — MoneyFlow Tracker</title>
-<meta name="description" content="Create your free MoneyFlow account and start tracking your finances today.">
+<title>Sign Up — MoneyFlow Tracker</title>
+<meta name="description" content="Create your free MoneyFlow account and take control of your personal finances.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --bg:      #0a0f1e;
-  --card:    rgba(22, 30, 54, 0.9);
-  --border:  rgba(255,255,255,0.08);
-  --a1:      #8b5cf6;
-  --a2:      #ec4899;
-  --text:    #f8fafc;
-  --muted:   #94a3b8;
-  --green:   #10b981;
-  --red:     #f43f5e;
+  --bg:       #0a0f1e;
+  --card:     rgba(22, 30, 54, 0.9);
+  --border:   rgba(255,255,255,0.08);
+  --a1:       #8b5cf6;
+  --a2:       #ec4899;
+  --text:     #f8fafc;
+  --muted:    #94a3b8;
+  --green:    #10b981;
+  --red:      #f43f5e;
   --gradient: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
-}
-
-/* Google Auth Button */
-.google-auth-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 13px 18px;
-  border-radius: 12px;
-  font-family: 'Outfit', sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  margin-bottom: 2px;
-  backdrop-filter: blur(10px);
-}
-.google-auth-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-}
-.google-auth-btn:active {
-  transform: translateY(0);
-}
-.google-auth-btn svg {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-#g_id_render_wrapper {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 2px;
-  min-height: 44px;
-}
-
-/* Divider */
-.divider {
-  display: flex; align-items: center; gap: 16px;
-  margin: 20px 0; color: var(--muted); font-size: 0.8rem;
-}
-.divider::before, .divider::after {
-  content: ''; flex: 1; height: 1px;
-  background: var(--border);
 }
 
 body {
   min-height: 100vh;
   background: var(--bg);
   background-image:
-    radial-gradient(ellipse at 80% 50%, rgba(139,92,246,0.12) 0%, transparent 50%),
-    radial-gradient(ellipse at 20% 20%, rgba(236,72,153,0.10) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 90%, rgba(16,185,129,0.06) 0%, transparent 40%);
+    radial-gradient(ellipse at 80% 20%, rgba(139,92,246,0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 20% 80%, rgba(236,72,153,0.10) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 10%, rgba(16,185,129,0.06) 0%, transparent 40%);
   color: var(--text);
   font-family: 'Inter', sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 24px 20px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -103,24 +52,25 @@ body {
   width: 100%; max-width: 460px;
 }
 
-.brand {
-  text-align: center; margin-bottom: 28px;
-}
+.brand { text-align: center; margin-bottom: 24px; }
 .brand-logo {
   font-family: 'Outfit', sans-serif;
   font-weight: 800; font-size: 2rem;
   background: var(--gradient);
   background-clip: text; -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  letter-spacing: -0.02em; display: inline-block;
+  letter-spacing: -0.02em;
+  display: inline-block;
 }
 .brand-tagline { color: var(--muted); font-size: 0.85rem; margin-top: 6px; }
 
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 24px; padding: 40px;
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 36px 36px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   box-shadow: 0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset;
   animation: cardIn 0.5s cubic-bezier(0.16,1,0.3,1);
 }
@@ -129,27 +79,71 @@ body {
   to   { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
-.card-title { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.5rem; margin-bottom: 6px; }
-.card-sub   { color: var(--muted); font-size: 0.875rem; margin-bottom: 32px; }
+.card-title {
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700; font-size: 1.5rem; margin-bottom: 4px;
+}
+.card-sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 20px; }
 
-.fld { margin-bottom: 20px; }
+/* Google Sign-in Button */
+.btn-google {
+  width: 100%;
+  padding: 13px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-bottom: 4px;
+}
+.btn-google:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.btn-google:active { transform: translateY(0); }
+.btn-google:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-google svg { flex-shrink: 0; }
+
+/* Divider */
+.divider {
+  display: flex; align-items: center; gap: 16px;
+  margin: 20px 0; color: var(--muted); font-size: 0.8rem;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 1px;
+  background: var(--border);
+}
+
+.fld { margin-bottom: 16px; }
 .fld label {
   display: block; font-size: 0.72rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--muted); margin-bottom: 8px;
+  color: var(--muted); margin-bottom: 6px;
   font-family: 'Outfit', sans-serif;
 }
 .input-wrap { position: relative; }
 .input-wrap .input-icon {
   position: absolute; left: 16px; top: 50%;
-  transform: translateY(-50%); font-size: 1rem; pointer-events: none;
+  transform: translateY(-50%); font-size: 1rem;
+  pointer-events: none;
 }
 .fld input {
   width: 100%;
   background: rgba(0,0,0,0.25);
   border: 1px solid var(--border);
-  border-radius: 12px; color: var(--text);
-  padding: 14px 16px 14px 44px;
+  border-radius: 12px;
+  color: var(--text);
+  padding: 13px 16px 13px 44px;
   font-family: 'Inter', sans-serif; font-size: 0.95rem;
   transition: all 0.25s ease;
 }
@@ -177,16 +171,15 @@ body {
   box-shadow: 0 0 0 4px rgba(139,92,246,0.15);
   background: rgba(0,0,0,0.35);
 }
-.fld input::placeholder { color: rgba(148,163,184,0.5); }
-.fld input.valid   { border-color: rgba(16,185,129,0.5); }
+.fld input.valid { border-color: rgba(16,185,129,0.5); }
 .fld input.invalid { border-color: rgba(244,63,94,0.5); }
+.fld input::placeholder { color: rgba(148,163,184,0.45); }
 
 .field-hint {
-  font-size: 0.75rem; color: var(--muted); margin-top: 6px;
-  display: flex; align-items: center; gap: 5px;
+  font-size: 0.75rem; color: var(--muted); margin-top: 5px;
 }
 
-#message { margin-bottom: 20px; }
+#message { margin-bottom: 16px; }
 .error-msg {
   background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.4);
   color: var(--red); padding: 12px 16px; border-radius: 10px; font-size: 0.875rem;
@@ -208,7 +201,7 @@ body {
 
 /* Perks list */
 .perks {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;
 }
 .perk {
   display: flex; align-items: center; gap: 8px;
@@ -223,23 +216,16 @@ body {
   letter-spacing: 0.05em; text-transform: uppercase;
   transition: all 0.25s ease;
   box-shadow: 0 8px 20px rgba(139,92,246,0.3); margin-top: 4px;
-  position: relative; overflow: hidden;
 }
-.btn-submit::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
-  opacity: 0; transition: opacity 0.25s;
-}
-.btn-submit:hover::after { opacity: 1; }
 .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(236,72,153,0.4); }
 .btn-submit:active { transform: translateY(0); }
-.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .card-footer {
   text-align: center; color: var(--muted);
   font-size: 0.875rem; margin-top: 24px;
 }
-.card-footer a { color: var(--a1); text-decoration: none; font-weight: 600; transition: color 0.2s; }
+.card-footer a { color: var(--a1); text-decoration: none; font-weight: 600; }
 .card-footer a:hover { color: var(--a2); }
 
 .terms {
@@ -270,20 +256,17 @@ body {
 
     <div id="message"></div>
 
-    <div id="google-btn-container" style="margin-bottom: 20px;">
-      <button type="button" class="google-auth-btn" id="google-custom-btn" onclick="triggerGoogleSignIn()">
-        <svg viewBox="0 0 24 24">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-        </svg>
-        <span>Sign up with Google</span>
-      </button>
-      <div id="g_id_render_wrapper" style="display:none;"></div>
-    </div>
+    <button type="button" class="btn-google" id="google-btn" onclick="handleGoogleAuth()">
+      <svg width="18" height="18" viewBox="0 0 18 18">
+        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
+        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+        <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+      </svg>
+      <span>Continue with Google</span>
+    </button>
 
-    <div class="divider"><span>or with email</span></div>
+    <div class="divider"><span>or register with email</span></div>
 
     <form id="signupForm" onsubmit="handleSignup(event)" novalidate>
       <div class="fld">
@@ -347,7 +330,93 @@ body {
 </div>
 
 <script>
-  // Toggle password visibility
+  let supabaseAuthClient = null;
+
+  async function initSupabase() {
+    try {
+      let config = {};
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          config = await res.json();
+        }
+      } catch (fetchErr) {
+        console.warn('Could not fetch /api/config, using default configuration');
+      }
+
+      const supUrl = config.supabaseUrl || 'https://oxpcbbxxtncvsvycawvm.supabase.co';
+      const supKey = config.supabaseAnonKey || 'sb_publishable_Zv8bmJAMfPvtDQup1wNCHw_dM9asX8u';
+
+      if (supUrl && supKey && window.supabase) {
+        supabaseAuthClient = window.supabase.createClient(supUrl, supKey);
+        const { data: { session }, error } = await supabaseAuthClient.auth.getSession();
+        if (session && session.user) {
+          await handleGoogleSession(session.user);
+        }
+        supabaseAuthClient.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            await handleGoogleSession(session.user);
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Could not load Supabase auth config:', err);
+    }
+  }
+
+  async function handleGoogleSession(googleUser) {
+    const msgEl = document.getElementById('message');
+    msgEl.innerHTML = '<div class="success-msg">🔄 Authenticating with Google…</div>';
+    const email = googleUser.email;
+    const name = googleUser.user_metadata?.full_name || googleUser.user_metadata?.name || email.split('@')[0];
+    const avatar = googleUser.user_metadata?.avatar_url || '';
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, avatar })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Google login failed');
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      msgEl.innerHTML = '<div class="success-msg">✅ Account ready! Redirecting…</div>';
+      setTimeout(() => window.location.href = '/', 600);
+    } catch (err) {
+      msgEl.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
+    }
+  }
+
+  async function handleGoogleAuth() {
+    const btn = document.getElementById('google-btn');
+    const msgEl = document.getElementById('message');
+    if (!supabaseAuthClient) {
+      msgEl.innerHTML = '<div class="error-msg">⚠️ Supabase is not configured yet. Please check your credentials.</div>';
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<span>Connecting to Google…</span>';
+    msgEl.innerHTML = '';
+    try {
+      const { data, error } = await supabaseAuthClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin + '/signup.html' }
+      });
+      if (error) throw error;
+    } catch (err) {
+      msgEl.innerHTML = `<div class="error-msg">❌ Google sign-in error: ${err.message}</div>`;
+      btn.disabled = false;
+      btn.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 18 18">
+          <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.616z"/>
+          <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+          <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+          <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+        </svg>
+        <span>Continue with Google</span>`;
+    }
+  }
+
   function togglePassword(inputId, btn) {
     const input = document.getElementById(inputId);
     if (!input) return;
@@ -364,91 +433,6 @@ body {
   }
 
   if (localStorage.getItem('token')) window.location.href = '/';
-
-  let googleClientId = '';
-
-  async function initGoogleAuth() {
-    try {
-      const res = await fetch('/api/auth/google/client-id');
-      const data = await res.json();
-      googleClientId = data.clientId || '';
-
-      if (window.google && window.google.accounts && googleClientId) {
-        google.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: handleGoogleResponse,
-          auto_select: false,
-          cancel_on_tap_outside: true
-        });
-
-        const renderContainer = document.getElementById('g_id_render_wrapper');
-        const customBtn = document.getElementById('google-custom-btn');
-        if (renderContainer) {
-          renderContainer.style.display = 'flex';
-          if (customBtn) customBtn.style.display = 'none';
-          google.accounts.id.renderButton(renderContainer, {
-            theme: 'filled_black',
-            size: 'large',
-            shape: 'rectangular',
-            text: 'signup_with',
-            width: 360,
-            logo_alignment: 'left'
-          });
-        }
-
-        google.accounts.id.prompt();
-      }
-    } catch (e) {
-      console.warn('Google Auth init check:', e);
-    }
-  }
-
-  function triggerGoogleSignIn() {
-    if (window.google && window.google.accounts && googleClientId) {
-      google.accounts.id.prompt();
-    } else {
-      const msgEl = document.getElementById('message');
-      msgEl.innerHTML = '<div class="error-msg">ℹ️ To enable Google Sign-Up, please configure your <code>GOOGLE_CLIENT_ID</code> in environment variables or register using email & password below.</div>';
-    }
-  }
-
-  async function handleGoogleResponse(response) {
-    const msgEl = document.getElementById('message');
-    if (!response || !response.credential) {
-      msgEl.innerHTML = '<div class="error-msg">❌ Google sign-up was cancelled or failed.</div>';
-      return;
-    }
-
-    msgEl.innerHTML = '<div class="success-msg">🔄 Connecting with Google…</div>';
-
-    try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential })
-      });
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Google signup failed');
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      msgEl.innerHTML = '<div class="success-msg">✅ Account ready! Redirecting to dashboard…</div>';
-      setTimeout(() => {
-        window.location.href = '/';
-      }, 400);
-    } catch (err) {
-      msgEl.innerHTML = `<div class="error-msg">❌ ${err.message}</div>`;
-    }
-  }
-
-  window.addEventListener('load', () => {
-    if (window.google) {
-      initGoogleAuth();
-    } else {
-      setTimeout(initGoogleAuth, 600);
-    }
-  });
 
   function validateName(el) {
     el.classList.toggle('valid',   el.value.trim().length >= 2);
@@ -532,6 +516,8 @@ body {
       btn.disabled = false; btn.textContent = 'Create Account';
     }
   }
+
+  window.addEventListener('DOMContentLoaded', initSupabase);
 </script>
 </body>
 </html>

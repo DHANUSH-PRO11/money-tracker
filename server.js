@@ -1,6 +1,6 @@
+try { require('dotenv').config(); } catch (e) {}
 const express = require('express');
 const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
@@ -46,26 +46,41 @@ function authenticateToken(req, res, next) {
 const isVercel = process.env.VERCEL === '1' || process.env.NOW_REGION;
 const dbPath = isVercel ? '/tmp/moneyflow.db' : path.join(__dirname, 'moneyflow.db');
 
-// If running in serverless /tmp and seed DB exists, copy it over
-if (isVercel && !fs.existsSync(dbPath)) {
-  const seedDb = path.join(__dirname, 'moneyflow.db');
-  if (fs.existsSync(seedDb)) {
-    try {
-      fs.copyFileSync(seedDb, dbPath);
-    } catch (e) {
-      console.error('Error copying seed database to /tmp:', e);
+let sqlite3 = null;
+let db = null;
+
+try {
+  sqlite3 = require('sqlite3').verbose();
+  
+  if (isVercel && !fs.existsSync(dbPath)) {
+    const seedDb = path.join(__dirname, 'moneyflow.db');
+    if (fs.existsSync(seedDb)) {
+      try {
+        fs.copyFileSync(seedDb, dbPath);
+      } catch (e) {
+        console.error('Error copying seed database to /tmp:', e);
+      }
     }
   }
-}
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-  } else {
-    console.log('Connected to SQLite database at:', dbPath);
-    initializeDatabase();
-  }
-});
+  db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+      console.error('Error opening database:', err.message);
+    } else {
+      console.log('Connected to SQLite database at:', dbPath);
+      initializeDatabase();
+    }
+  });
+} catch (loadErr) {
+  console.warn('⚠️ SQLite3 native module could not be initialized:', loadErr.message);
+  // Create safe dummy db object if sqlite3 fails in serverless
+  db = {
+    get: (sql, params, cb) => (typeof params === 'function' ? params : cb)(null, null),
+    all: (sql, params, cb) => (typeof params === 'function' ? params : cb)(null, []),
+    run: (sql, params, cb) => (typeof params === 'function' ? params : cb)(null),
+    serialize: (fn) => fn && fn()
+  };
+}
 
 function initializeDatabase() {
   db.serialize(() => {
@@ -163,7 +178,7 @@ function initializeDatabase() {
     )`);
 
     // Add user_id column to budgets if it doesn't exist (migration)
-    db.run(`ALTER TABLE budgets ADD COLUMN user_id INTEGER REFERENCES users(id)`, () => {});
+    db.run(`ALTER TABLE budgets ADD COLUMN user_id INTEGER REFERENCES users(id)`, () => { });
 
     console.log('Database initialized successfully');
 
@@ -215,7 +230,7 @@ app.post('/api/auth/signup', async (req, res) => {
         db.run(
           'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
           [cleanName, cleanEmail, hashedPassword],
-          function(err) {
+          function (err) {
             if (err) return res.status(500).json({ error: 'Failed to create user' });
 
             const userId = this.lastID;
@@ -285,55 +300,27 @@ app.post('/api/auth/login', async (req, res) => {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error' });
   }
+
 });
 
-app.get('/api/auth/google/client-id', (req, res) => {
-  res.json({ clientId: process.env.GOOGLE_CLIENT_ID || '' });
+app.get('/api/config', (req, res) => {
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL || '',
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ''
+  });
 });
 
 app.post('/api/auth/google', async (req, res) => {
-  const { credential } = req.body;
-  if (!credential) {
-    return res.status(400).json({ error: 'Google credential is required' });
+  const { email, name, avatar } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required for Google authentication' });
   }
 
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = (name && name.trim()) || cleanEmail.split('@')[0];
+
   try {
-    let email, name, picture, googleId;
-
-    try {
-      const { OAuth2Client } = require('google-auth-library');
-      const googleClientId = process.env.GOOGLE_CLIENT_ID;
-      const client = new OAuth2Client(googleClientId || undefined);
-
-      const ticket = await client.verifyIdToken({
-        idToken: credential,
-        ...(googleClientId && { audience: googleClientId })
-      });
-      const payload = ticket.getPayload();
-      email = payload.email;
-      name = payload.name || payload.given_name || (payload.email ? payload.email.split('@')[0] : 'Google User');
-      picture = payload.picture;
-      googleId = payload.sub;
-    } catch (verifyErr) {
-      console.warn('Google client verification warning, attempting fallback decoding:', verifyErr.message);
-      // Fallback decode for development / unconfigured audience
-      const decoded = jwt.decode(credential);
-      if (!decoded || !decoded.email) {
-        return res.status(400).json({ error: 'Invalid Google credential token' });
-      }
-      email = decoded.email;
-      name = decoded.name || (decoded.email ? decoded.email.split('@')[0] : 'Google User');
-      picture = decoded.picture;
-      googleId = decoded.sub;
-    }
-
-    if (!email) {
-      return res.status(400).json({ error: 'Google account has no associated email address' });
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanName = (name || cleanEmail.split('@')[0]).trim();
-
     db.get('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail], async (err, user) => {
       if (err) {
         console.error('DB error during Google auth:', err);
@@ -341,20 +328,22 @@ app.post('/api/auth/google', async (req, res) => {
       }
 
       if (user) {
+        // User already exists, generate token
         const token = jwt.sign(
           { id: user.id, email: user.email, name: user.name },
           JWT_SECRET,
           { expiresIn: '7d' }
         );
+
         return res.json({
-          message: 'Google login successful',
+          message: 'Login successful',
           token,
           user: { id: user.id, name: user.name, email: user.email }
         });
       }
 
-      // User does not exist, create new user account
-      const randomPassword = require('crypto').randomBytes(24).toString('hex');
+      // User does not exist, create new user
+      const randomPassword = Math.random().toString(36).slice(-10) + 'A1!';
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
 
       db.run(
@@ -362,11 +351,18 @@ app.post('/api/auth/google', async (req, res) => {
         [cleanName, cleanEmail, hashedPassword],
         function (insertErr) {
           if (insertErr) {
-            console.error('Error creating user with Google auth:', insertErr);
+            console.error('Error creating Google user:', insertErr);
             return res.status(500).json({ error: 'Failed to create user account' });
           }
 
           const userId = this.lastID;
+
+          // Provision default accounts for new user
+          const defaultAccounts = ['Cash', 'Bank / GPay', 'Card'];
+          defaultAccounts.forEach(accName => {
+            db.run('INSERT OR IGNORE INTO accounts (name, user_id) VALUES (?, ?)', [accName, userId]);
+          });
+
           const token = jwt.sign(
             { id: userId, email: cleanEmail, name: cleanName },
             JWT_SECRET,
@@ -374,7 +370,7 @@ app.post('/api/auth/google', async (req, res) => {
           );
 
           res.status(201).json({
-            message: 'Account created with Google successfully',
+            message: 'User registered and logged in with Google',
             token,
             user: { id: userId, name: cleanName, email: cleanEmail }
           });
@@ -382,8 +378,8 @@ app.post('/api/auth/google', async (req, res) => {
       );
     });
   } catch (error) {
-    console.error('Google auth processing error:', error);
-    res.status(500).json({ error: 'Failed to authenticate with Google' });
+    console.error('Google auth error:', error);
+    res.status(500).json({ error: 'Server error during Google authentication' });
   }
 });
 
@@ -391,7 +387,8 @@ app.get('/api/auth/verify', authenticateToken, (req, res) => {
   res.json({ message: 'Token is valid', user: req.user });
 });
 
-// ─── USER PROFILE & SETTINGS ──────────────────────────────────────────────────
+// ─── USER PROFILE & SETTINGS ─────────────────────────────────────────────────
+
 
 // Get current user profile
 app.get('/api/user/profile', authenticateToken, (req, res) => {
@@ -422,7 +419,7 @@ app.put('/api/user/profile', authenticateToken, (req, res) => {
     db.run(
       'UPDATE users SET name = ?, email = ? WHERE id = ?',
       [cleanName, cleanEmail, req.user.id],
-      function(err) {
+      function (err) {
         if (err) return res.status(500).json({ error: 'Failed to update profile' });
 
         const token = jwt.sign(
@@ -462,7 +459,7 @@ app.put('/api/user/password', authenticateToken, async (req, res) => {
       }
 
       const hashed = await bcrypt.hash(newPassword, 10);
-      db.run('UPDATE users SET password = ? WHERE id = ?', [hashed, req.user.id], function(err) {
+      db.run('UPDATE users SET password = ? WHERE id = ?', [hashed, req.user.id], function (err) {
         if (err) return res.status(500).json({ error: 'Failed to update password' });
         res.json({ message: 'Password updated successfully' });
       });
@@ -499,7 +496,7 @@ app.post('/api/accounts', authenticateToken, (req, res) => {
       db.run(
         'INSERT INTO accounts (name, user_id) VALUES (?, ?)',
         [cleanName, req.user.id],
-        function(err) {
+        function (err) {
           if (err) {
             if (err.message.includes('UNIQUE constraint failed'))
               return res.status(400).json({ error: 'Account name already exists' });
@@ -528,7 +525,7 @@ app.put('/api/accounts/:id', authenticateToken, (req, res) => {
       db.run(
         'UPDATE accounts SET name = ? WHERE id = ? AND user_id = ?',
         [cleanName, req.params.id, req.user.id],
-        function(err) {
+        function (err) {
           if (err) {
             if (err.message.includes('UNIQUE constraint failed'))
               return res.status(400).json({ error: 'Account name already exists' });
@@ -565,7 +562,7 @@ app.delete('/api/accounts/:id', authenticateToken, (req, res) => {
           db.run(
             'DELETE FROM accounts WHERE id = ? AND user_id = ?',
             [accountId, req.user.id],
-            function(err) {
+            function (err) {
               if (err) return res.status(500).json({ error: err.message });
               res.json({ message: 'Account deleted successfully' });
             }
@@ -593,7 +590,7 @@ app.post('/api/categories', authenticateToken, (req, res) => {
   db.run(
     'INSERT INTO categories (name, color, icon) VALUES (?, ?, ?)',
     [name, color || '#7c6af7', icon || '📌'],
-    function(err) {
+    function (err) {
       if (err) {
         if (err.message.includes('UNIQUE constraint failed'))
           return res.status(400).json({ error: 'Category name already exists' });
@@ -613,7 +610,7 @@ app.put('/api/categories/:id', authenticateToken, (req, res) => {
   db.run(
     'UPDATE categories SET name = ?, color = ?, icon = ? WHERE id = ?',
     [name, color, icon, req.params.id],
-    function(err) {
+    function (err) {
       if (err) {
         if (err.message.includes('UNIQUE constraint failed'))
           return res.status(400).json({ error: 'Category name already exists' });
@@ -633,7 +630,7 @@ app.delete('/api/categories/:id', authenticateToken, (req, res) => {
   db.run('UPDATE transactions SET category_id = NULL WHERE category_id = ?', [categoryId], (err) => {
     if (err) return res.status(500).json({ error: err.message });
 
-    db.run('DELETE FROM categories WHERE id = ?', [categoryId], function(err) {
+    db.run('DELETE FROM categories WHERE id = ?', [categoryId], function (err) {
       if (err) return res.status(500).json({ error: err.message });
       if (this.changes === 0) return res.status(404).json({ error: 'Category not found' });
       res.json({ message: 'Category deleted successfully' });
@@ -647,7 +644,7 @@ app.delete('/api/categories/:id', authenticateToken, (req, res) => {
 app.get('/api/transactions', authenticateToken, (req, res) => {
   const { startDate, endDate, categoryId, accountId } = req.query;
   let query = `
-    SELECT t.*, t.date as transaction_date, a.name as account_name, c.name as category_name,
+    SELECT t.*, a.name as account_name, c.name as category_name,
            c.color as category_color, c.icon as category_icon
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
@@ -657,11 +654,11 @@ app.get('/api/transactions', authenticateToken, (req, res) => {
   const params = [req.user.id];
 
   if (startDate) { query += ' AND t.date >= ?'; params.push(startDate); }
-  if (endDate)   { query += ' AND t.date <= ?'; params.push(endDate); }
-  if (categoryId){ query += ' AND t.category_id = ?'; params.push(categoryId); }
+  if (endDate) { query += ' AND t.date <= ?'; params.push(endDate); }
+  if (categoryId) { query += ' AND t.category_id = ?'; params.push(categoryId); }
   if (accountId) { query += ' AND t.account_id = ?'; params.push(accountId); }
 
-  query += ' ORDER BY t.created_at DESC, t.id DESC';
+  query += ' ORDER BY t.date DESC, t.created_at DESC';
 
   db.all(query, params, (err, rows) =>
     err ? res.status(500).json({ error: err.message }) : res.json(rows)
@@ -670,10 +667,9 @@ app.get('/api/transactions', authenticateToken, (req, res) => {
 
 // Create new transaction (only for user's own accounts)
 app.post('/api/transactions', authenticateToken, (req, res) => {
-  const { date, transaction_date, account_id, category_id, reason, amount, type } = req.body;
-  const txnDate = (transaction_date || date || '').trim();
+  const { date, account_id, category_id, reason, amount, type } = req.body;
 
-  if (!txnDate || !account_id || !reason || !amount || !type)
+  if (!date || !account_id || !reason || !amount || !type)
     return res.status(400).json({ error: 'All required fields must be provided' });
   if (amount <= 0)
     return res.status(400).json({ error: 'Amount must be greater than 0' });
@@ -686,85 +682,17 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!account) return res.status(403).json({ error: 'Account not found or access denied' });
 
-      const createdAt = new Date().toISOString();
-
       db.run(
-        'INSERT INTO transactions (date, account_id, category_id, reason, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [txnDate, account_id, category_id || null, reason.trim(), amount, type, createdAt],
-        function(err) {
+        'INSERT INTO transactions (date, account_id, category_id, reason, amount, type) VALUES (?, ?, ?, ?, ?, ?)',
+        [date, account_id, category_id || null, reason, amount, type],
+        function (err) {
           if (err) return res.status(500).json({ error: err.message });
-          const insertId = this.lastID;
-
-          db.get(
-            `SELECT t.*, t.date as transaction_date, a.name as account_name, c.name as category_name,
-                    c.color as category_color, c.icon as category_icon
-             FROM transactions t
-             JOIN accounts a ON t.account_id = a.id
-             LEFT JOIN categories c ON t.category_id = c.id
-             WHERE t.id = ?`,
-            [insertId],
-            (err, row) => {
-              if (err) return res.status(500).json({ error: err.message });
-              res.json(row);
-            }
-          );
-        }
-      );
-    }
-  );
-});
-
-// Update transaction (only user's own)
-app.put('/api/transactions/:id', authenticateToken, (req, res) => {
-  const { date, transaction_date, account_id, category_id, reason, amount, type } = req.body;
-  const txnDate = (transaction_date || date || '').trim();
-
-  if (!txnDate || !account_id || !reason || !amount || !type)
-    return res.status(400).json({ error: 'All required fields must be provided' });
-  if (amount <= 0)
-    return res.status(400).json({ error: 'Amount must be greater than 0' });
-
-  // Verify transaction belongs to user
-  db.get(
-    `SELECT t.id FROM transactions t
-     JOIN accounts a ON t.account_id = a.id
-     WHERE t.id = ? AND a.user_id = ?`,
-    [req.params.id, req.user.id],
-    (err, txn) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if (!txn) return res.status(404).json({ error: 'Transaction not found or access denied' });
-
-      // Verify target account belongs to user
-      db.get(
-        'SELECT id FROM accounts WHERE id = ? AND user_id = ?',
-        [account_id, req.user.id],
-        (err2, account) => {
-          if (err2) return res.status(500).json({ error: err2.message });
-          if (!account) return res.status(403).json({ error: 'Target account not found' });
-
-          db.run(
-            `UPDATE transactions 
-             SET date = ?, account_id = ?, category_id = ?, reason = ?, amount = ?, type = ?
-             WHERE id = ?`,
-            [txnDate, account_id, category_id || null, reason.trim(), parseFloat(amount), type, req.params.id],
-            function(err3) {
-              if (err3) return res.status(500).json({ error: err3.message });
-
-              db.get(
-                `SELECT t.*, t.date as transaction_date, a.name as account_name, c.name as category_name,
-                        c.color as category_color, c.icon as category_icon
-                 FROM transactions t
-                 JOIN accounts a ON t.account_id = a.id
-                 LEFT JOIN categories c ON t.category_id = c.id
-                 WHERE t.id = ?`,
-                [req.params.id],
-                (err4, row) => {
-                  if (err4) return res.status(500).json({ error: err4.message });
-                  res.json(row);
-                }
-              );
-            }
-          );
+          res.json({
+            id: this.lastID, date,
+            account_id: parseInt(account_id),
+            category_id: category_id ? parseInt(category_id) : null,
+            reason, amount: parseFloat(amount), type
+          });
         }
       );
     }
@@ -783,7 +711,7 @@ app.delete('/api/transactions/:id', authenticateToken, (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!row) return res.status(404).json({ error: 'Transaction not found' });
 
-      db.run('DELETE FROM transactions WHERE id = ?', [req.params.id], function(err) {
+      db.run('DELETE FROM transactions WHERE id = ?', [req.params.id], function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: 'Transaction deleted successfully' });
       });
@@ -816,7 +744,7 @@ app.post('/api/budgets', authenticateToken, (req, res) => {
   db.run(
     'INSERT INTO budgets (user_id, category_id, amount, period) VALUES (?, ?, ?, ?)',
     [req.user.id, category_id, amount, period || 'monthly'],
-    function(err) {
+    function (err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ id: this.lastID, user_id: req.user.id, category_id, amount, period: period || 'monthly' });
     }
@@ -830,7 +758,7 @@ app.put('/api/budgets/:id', authenticateToken, (req, res) => {
   db.run(
     'UPDATE budgets SET category_id = ?, amount = ?, period = ? WHERE id = ? AND user_id = ?',
     [category_id, amount, period || 'monthly', req.params.id, req.user.id],
-    function(err) {
+    function (err) {
       if (err) return res.status(500).json({ error: err.message });
       if (this.changes === 0) return res.status(404).json({ error: 'Budget not found' });
       res.json({ id: req.params.id, category_id, amount, period: period || 'monthly' });
@@ -843,7 +771,7 @@ app.delete('/api/budgets/:id', authenticateToken, (req, res) => {
   db.run(
     'DELETE FROM budgets WHERE id = ? AND user_id = ?',
     [req.params.id, req.user.id],
-    function(err) {
+    function (err) {
       if (err) return res.status(500).json({ error: err.message });
       if (this.changes === 0) return res.status(404).json({ error: 'Budget not found' });
       res.json({ message: 'Budget deleted successfully' });
@@ -867,7 +795,7 @@ app.get('/api/summary', authenticateToken, (req, res) => {
   const params = [req.user.id];
 
   if (startDate) { query += ' AND t.date >= ?'; params.push(startDate); }
-  if (endDate)   { query += ' AND t.date <= ?'; params.push(endDate); }
+  if (endDate) { query += ' AND t.date <= ?'; params.push(endDate); }
   query += ' GROUP BY t.type, c.name';
 
   db.all(query, params, (err, rows) => {
@@ -881,8 +809,8 @@ app.get('/api/summary', authenticateToken, (req, res) => {
 
     rows.forEach(row => {
       if (row.type === 'in') {
-        summary.total_in  += row.total || 0;
-        summary.count_in  += row.count || 0;
+        summary.total_in += row.total || 0;
+        summary.count_in += row.count || 0;
       } else {
         summary.total_out += row.total || 0;
         summary.count_out += row.count || 0;
@@ -927,10 +855,10 @@ app.get('/api/spending-trends', authenticateToken, (req, res) => {
 
   let dateFormat;
   switch (period) {
-    case 'daily':   dateFormat = '%Y-%m-%d'; break;
-    case 'weekly':  dateFormat = '%Y-%W';    break;
-    case 'yearly':  dateFormat = '%Y';       break;
-    default:        dateFormat = '%Y-%m';    break;
+    case 'daily': dateFormat = '%Y-%m-%d'; break;
+    case 'weekly': dateFormat = '%Y-%W'; break;
+    case 'yearly': dateFormat = '%Y'; break;
+    default: dateFormat = '%Y-%m'; break;
   }
 
   const query = `
@@ -1021,7 +949,7 @@ app.get('/api/export/csv', authenticateToken, (req, res) => {
     query += ' AND t.date BETWEEN ? AND ?';
     params.push(start, end);
   }
-  query += ' ORDER BY t.date DESC, t.created_at DESC, t.id DESC';
+  query += ' ORDER BY t.date DESC';
 
   db.all(query, params, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });

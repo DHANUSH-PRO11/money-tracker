@@ -7,6 +7,7 @@
 <meta name="description" content="Track your income and expenses with MoneyFlow. Manage accounts, categories, budgets, and visualize your spending trends.">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -21,10 +22,10 @@
   </div>
   <div class="nav-actions">
     <div class="bal-pill" id="nav-bal" style="color:var(--green)">₹0.00</div>
-    <div class="user-pill" id="nav-user" title="Logged in user">👤</div>
+    <div class="user-pill" id="nav-user" onclick="openUserSettingsModal()" style="cursor:pointer;" title="Click to view Profile & Settings">👤</div>
     <button class="icon-btn" onclick="openUserSettingsModal()" title="Edit Profile & Account Settings">⚙️</button>
     <button class="icon-btn" onclick="toggleTheme()" title="Toggle Theme" id="theme-btn">🌙</button>
-    <button class="logout-btn" onclick="logout()">Sign Out</button>
+    <button class="logout-btn" onclick="logout()" title="Sign out of your account">🚪 Sign Out</button>
   </div>
 </nav>
 
@@ -137,9 +138,9 @@
             <option value="">All Categories</option>
           </select>
           <select class="cat-filter" id="date-range-filter" onchange="applyDateRangeFilter()">
-            <option value="all" selected>All Time</option>
+            <option value="all">All Time</option>
             <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
+            <option value="30" selected>Last 30 days</option>
             <option value="90">Last 3 months</option>
             <option value="180">Last 6 months</option>
             <option value="365">Last Year</option>
@@ -153,8 +154,8 @@
         <table>
           <thead>
             <tr>
-              <th>Transaction Date</th><th>Entered At</th><th>Account</th><th>Category</th>
-              <th>Reason</th><th>Type</th><th>Amount</th><th>Actions</th>
+              <th>Date</th><th>Day</th><th>Account</th><th>Category</th>
+              <th>Reason</th><th>Type</th><th>Amount</th><th></th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -505,62 +506,11 @@
         </form>
       </div>
     </div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+      <button type="button" class="btn-delete" onclick="logout()" style="padding:9px 18px; border-radius:10px; font-size:0.875rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <span>🚪</span> Log Out
+      </button>
       <button class="btn-cancel" onclick="closeUserSettingsModal()">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- Edit Transaction Modal -->
-<div class="modal" id="edit-txn-modal">
-  <div class="modal-content" style="max-width:480px;">
-    <div class="modal-header">
-      <h3>✏️ Edit Transaction</h3>
-      <button class="modal-close" onclick="closeEditTxnModal()">×</button>
-    </div>
-    <div class="modal-body">
-      <form id="form-edit-txn" onsubmit="event.preventDefault(); saveEditTxn();">
-        <input type="hidden" id="edit-txn-id">
-        <div class="fld">
-          <label for="edit-txn-date">Transaction Date</label>
-          <input type="date" id="edit-txn-date" required>
-        </div>
-        <div class="fld" style="margin-top:8px;">
-          <div id="edit-txn-entered-badge" style="font-size:0.78rem;color:var(--text-muted);background:rgba(255,255,255,0.04);padding:6px 12px;border-radius:8px;border:1px solid var(--border-subtle);"></div>
-        </div>
-        <div class="row2" style="margin-top:12px;">
-          <div class="fld">
-            <label for="edit-txn-acc">Account</label>
-            <select id="edit-txn-acc" required></select>
-          </div>
-          <div class="fld">
-            <label for="edit-txn-cat">Category</label>
-            <select id="edit-txn-cat">
-              <option value="">No Category</option>
-            </select>
-          </div>
-        </div>
-        <div class="fld" style="margin-top:12px;">
-          <label for="edit-txn-amt">Amount (₹)</label>
-          <input type="number" id="edit-txn-amt" placeholder="0.00" min="0.01" step="0.01" required>
-        </div>
-        <div class="fld" style="margin-top:12px;">
-          <label for="edit-txn-reason">Reason / Description</label>
-          <input type="text" id="edit-txn-reason" placeholder="e.g. Groceries, Salary" required>
-        </div>
-        <div class="fld" style="margin-top:12px;"><label>Type</label></div>
-        <div class="type-row" style="margin-top:4px;">
-          <div class="topt out" id="edit-tp-out" onclick="pickEditType('out')">
-            <em>💸</em>
-            <span>SPENT</span>
-          </div>
-          <div class="topt" id="edit-tp-in" onclick="pickEditType('in')">
-            <em>💰</em>
-            <span>RECEIVED</span>
-          </div>
-        </div>
-        <button type="submit" class="btn-save" style="width:100%;margin-top:20px;">💾 Save Changes</button>
-      </form>
     </div>
   </div>
 </div>

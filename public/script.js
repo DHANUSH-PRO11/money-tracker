@@ -15,7 +15,7 @@ let curFilter   = 'all';
 let curType     = 'out';
 let charts      = {};
 let activePage  = localStorage.getItem('activePage') || 'home';
-let dateRangeDays = 'all'; // default filter for dashboard ('all' shows all records)
+let dateRangeDays = 30; // default filter for dashboard
 
 // ─── NUMBER FORMATTER ─────────────────────────────────────────────────────────
 
@@ -64,9 +64,25 @@ function checkAuth() {
   return true;
 }
 
-function logout() {
+async function logout() {
+  try {
+    if (window.supabase && typeof window.supabase.createClient === 'function') {
+      const res = await fetch(API_BASE + '/config').catch(() => null);
+      if (res && res.ok) {
+        const config = await res.json();
+        if (config.supabaseUrl && config.supabaseAnonKey) {
+          const client = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+          await client.auth.signOut().catch(() => {});
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Supabase signOut error:', e);
+  }
+
   localStorage.removeItem('token');
   localStorage.removeItem('user');
+  localStorage.removeItem('activePage');
   window.location.href = '/login.html';
 }
 
@@ -341,101 +357,6 @@ function pickType(t) {
   document.getElementById('tp-in').className  = 'topt' + (t === 'in'  ? ' in'  : '');
 }
 
-/** Formats a date string "YYYY-MM-DD" or "DD/MM/YYYY" without any timezone shift */
-function formatTransactionDate(dateStr) {
-  if (!dateStr) return { formatted: '—', day: '—', raw: '', iso: '' };
-
-  const clean = String(dateStr).slice(0, 10);
-  let year, month, day;
-
-  if (clean.includes('-')) {
-    const parts = clean.split('-').map(Number);
-    year = parts[0];
-    month = parts[1];
-    day = parts[2];
-  } else if (clean.includes('/')) {
-    const parts = clean.split('/').map(Number);
-    if (parts[0] > 1000) {
-      year = parts[0];
-      month = parts[1];
-      day = parts[2];
-    } else {
-      day = parts[0];
-      month = parts[1];
-      year = parts[2];
-    }
-  }
-
-  if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) {
-    return { formatted: clean, day: '—', raw: clean, iso: clean };
-  }
-
-  // Construct local date without UTC conversion
-  const d = new Date(year, month - 1, day);
-  const dayIndex = d.getDay();
-  const dayName = !isNaN(dayIndex) && DAYS[dayIndex] ? DAYS[dayIndex].slice(0, 3) : '—';
-  const pad = n => String(n).padStart(2, '0');
-  const formatted = `${pad(day)}/${pad(month)}/${year}`;
-  const iso = `${year}-${pad(month)}-${pad(day)}`;
-
-  return {
-    formatted,
-    iso,
-    day: dayName,
-    raw: clean
-  };
-}
-
-/** Formats the creation timestamp into a clean, localized date & time */
-function formatEnteredAt(timestamp) {
-  if (!timestamp) return { date: '—', time: '—', full: '—' };
-
-  let d = new Date(timestamp);
-  // If timestamp is SQLite "YYYY-MM-DD HH:MM:SS" (UTC), convert to ISO
-  if (isNaN(d.getTime())) {
-    if (typeof timestamp === 'string' && timestamp.includes(' ')) {
-      d = new Date(timestamp.replace(' ', 'T') + 'Z');
-    }
-  }
-
-  if (isNaN(d.getTime())) {
-    return { date: String(timestamp), time: '', full: String(timestamp) };
-  }
-
-  const pad = n => String(n).padStart(2, '0');
-  const day = pad(d.getDate());
-  const month = pad(d.getMonth() + 1);
-  const year = d.getFullYear();
-  const dateStr = `${day}/${month}/${year}`;
-
-  let hours = d.getHours();
-  const minutes = pad(d.getMinutes());
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12 || 12;
-  const timeStr = `${pad(hours)}:${minutes} ${ampm}`;
-
-  return {
-    date: dateStr,
-    time: timeStr,
-    full: `${dateStr} ${timeStr}`
-  };
-}
-
-/** Sort transactions by created_at / entered_at descending (newest entry first) */
-function sortTransactions(list) {
-  if (!Array.isArray(list)) return [];
-  return list.sort((a, b) => {
-    // 1. Compare created_at timestamp descending
-    const timeA = a.created_at || '';
-    const timeB = b.created_at || '';
-    if (timeA && timeB && timeA !== timeB) {
-      return timeB.localeCompare(timeA);
-    }
-    // 2. Fallback by id descending
-    return (b.id || 0) - (a.id || 0);
-  });
-}
-
 async function addEntry() {
   const date = document.getElementById('f-date').value;
   const aid  = parseInt(document.getElementById('f-acc').value);
@@ -458,37 +379,20 @@ async function addEntry() {
   try {
     const newTxn = await apiCall('/transactions', {
       method: 'POST',
-      body: JSON.stringify({
-        date,
-        transaction_date: date,
-        account_id: aid,
-        category_id: cid,
-        reason: rsn,
-        amount: amt,
-        type: curType
-      })
+      body: JSON.stringify({ date, account_id: aid, category_id: cid, reason: rsn, amount: amt, type: curType })
     });
 
-    if (newTxn) {
-      const cat = categories.find(c => c.id === (newTxn.category_id || cid));
-      const acc = accounts.find(a => a.id === (newTxn.account_id || aid));
-      if (!newTxn.account_name && acc) newTxn.account_name = acc.name;
-      if (!newTxn.category_name && cat) newTxn.category_name = cat.name;
-      if (!newTxn.category_icon && cat) newTxn.category_icon = cat.icon;
-      if (!newTxn.category_color && cat) newTxn.category_color = cat.color;
-
-      txns.unshift(newTxn);
-      sortTransactions(txns);
-    }
+    // Optimistically add to local list
+    const cat = categories.find(c => c.id === cid);
+    const acc = accounts.find(a => a.id === aid);
+    newTxn.account_name   = acc ? acc.name : '';
+    newTxn.category_name  = cat ? cat.name : null;
+    newTxn.category_icon  = cat ? cat.icon : null;
+    newTxn.category_color = cat ? cat.color : null;
+    txns.unshift(newTxn);
 
     refreshNav();
     drawHomeRecent();
-
-    // If Dashboard is currently in DOM, keep it in sync
-    const dashPage = document.getElementById('pg-dash');
-    if (dashPage && dashPage.classList.contains('on')) {
-      drawDash();
-    }
 
     document.getElementById('f-reason').value = '';
     document.getElementById('f-amt').value    = '';
@@ -506,37 +410,20 @@ function drawHomeRecent() {
   const container = document.getElementById('home-recent');
   if (!container) return;
 
-  sortTransactions(txns);
   const recent = txns.slice(0, 5);
-  if (!recent.length) {
-    container.innerHTML = `
-      <div class="home-recent-title">Recent Activity</div>
-      <div style="text-align:center;padding:24px 16px;color:var(--text-muted);font-size:0.88rem;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-lg);margin-top:12px;">
-        No recent activity yet. Add your first entry above!
-      </div>`;
-    return;
-  }
+  if (!recent.length) { container.innerHTML = ''; return; }
 
   container.innerHTML = `
     <div class="home-recent-title">Recent Activity</div>
     ${recent.map(t => {
       const cat = categories.find(c => c.id === t.category_id);
-      const icon = t.category_icon || (cat ? cat.icon : (t.type === 'in' ? '💰' : '💸'));
-      const acc = accounts.find(a => a.id === t.account_id);
-      const accName = t.account_name || (acc ? acc.name : '');
-      const tDate = formatTransactionDate(t.date || t.transaction_date);
-      const entered = formatEnteredAt(t.created_at);
-
+      const icon = cat ? cat.icon : (t.type === 'in' ? '💰' : '💸');
       return `
       <div class="recent-item">
         <div class="recent-icon">${icon}</div>
         <div class="recent-info">
           <div class="recent-reason">${escHtml(t.reason)}</div>
-          <div class="recent-meta">
-            <span class="meta-tag">📅 ${tDate.formatted} (${tDate.day})</span>
-            <span class="meta-tag meta-entered">⏰ Entered: ${entered.full}</span>
-            ${accName ? `<span class="meta-tag meta-acc">🏦 ${escHtml(accName)}</span>` : ''}
-          </div>
+          <div class="recent-meta">${t.date} · ${t.account_name || ''}</div>
         </div>
         <div class="recent-amount ${t.type === 'in' ? 'gi' : 'ri'}">
           ${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}
@@ -549,16 +436,10 @@ function drawHomeRecent() {
 
 async function drawDash() {
   try {
-    const [accountBalances, summary, txnsData] = await Promise.all([
+    const [accountBalances, summary] = await Promise.all([
       apiCall('/account-balances'),
-      apiCall('/summary'),
-      apiCall('/transactions')
+      apiCall('/summary')
     ]);
-
-    if (Array.isArray(txnsData)) {
-      txns = txnsData;
-      sortTransactions(txns);
-    }
 
     // Account cards
     document.getElementById('acc-grid').innerHTML = accountBalances.length === 0
@@ -576,7 +457,7 @@ async function drawDash() {
 
     // Filter buttons by account
     document.getElementById('filt-btns').innerHTML = accounts.map(a =>
-      `<button class="fbtn ${curFilter == a.id ? 'on' : ''}" onclick="filt(${a.id}, this)">${escHtml(a.name)}</button>`
+      `<button class="fbtn ${curFilter == a.id ? 'on' : ''}" onclick="filt(${a.id}, this)">${a.name}</button>`
     ).join('');
 
     // Summary stats
@@ -596,7 +477,7 @@ async function drawDash() {
 
 function applyDateRangeFilter() {
   const val = document.getElementById('date-range-filter').value;
-  dateRangeDays = val === 'all' ? 'all' : parseInt(val, 10);
+  dateRangeDays = val === 'all' ? null : parseInt(val);
   drawTable();
 }
 
@@ -614,170 +495,45 @@ function drawTable() {
   const catFilter = document.getElementById('cat-filter');
   if (!tbody || !empty || !srch || !catFilter) return;
 
-  const srchVal    = (srch.value || '').toLowerCase().trim();
+  const srchVal    = srch.value.toLowerCase();
   const catVal     = catFilter.value;
   const now        = new Date();
-  const cutoff     = (dateRangeDays && dateRangeDays !== 'all')
-    ? new Date(now.getTime() - parseInt(dateRangeDays, 10) * 86400000).toISOString().slice(0, 10)
+  const cutoff     = dateRangeDays
+    ? new Date(now.getTime() - dateRangeDays * 86400000).toISOString().slice(0, 10)
     : null;
 
-  sortTransactions(txns);
-
   const rows = txns.filter(t => {
-    const reasonMatch  = (t.reason || '').toLowerCase().includes(srchVal);
-    const accMatch     = (t.account_name || '').toLowerCase().includes(srchVal);
-    const catMatch     = (t.category_name || '').toLowerCase().includes(srchVal);
-    const matchSearch  = !srchVal || reasonMatch || accMatch || catMatch;
-
-    const matchCat     = !catVal || String(t.category_id) === String(catVal);
-    const matchAccount = curFilter === 'all' || String(t.account_id) === String(curFilter);
-    const txnDate      = (t.date || t.transaction_date || '').slice(0, 10);
-    const matchDate    = !cutoff || txnDate >= cutoff;
+    const matchSearch  = t.reason.toLowerCase().includes(srchVal) ||
+                         (t.account_name||'').toLowerCase().includes(srchVal) ||
+                         (t.category_name||'').toLowerCase().includes(srchVal);
+    const matchCat     = !catVal || t.category_id == catVal;
+    const matchAccount = curFilter === 'all' || t.account_id == curFilter;
+    const matchDate    = !cutoff || t.date >= cutoff;
     return matchSearch && matchCat && matchAccount && matchDate;
   });
 
-  if (!rows.length) {
-    tbody.innerHTML = '';
-    empty.style.display = 'block';
-    return;
-  }
+  if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
 
   tbody.innerHTML = rows.map(t => {
-    const tDate = formatTransactionDate(t.date || t.transaction_date);
-    const entered = formatEnteredAt(t.created_at);
+    const d   = new Date(t.date + 'T00:00:00');
+    const day = DAYS[d.getDay()];
     const acc = accounts.find(a => a.id === t.account_id);
     const idx = accounts.findIndex(a => a.id === t.account_id);
-    const badgeIdx = idx >= 0 ? idx % 4 : 0;
     const catLabel = t.category_icon
       ? `${t.category_icon} ${escHtml(t.category_name)}`
       : (t.category_name ? escHtml(t.category_name) : '<span style="color:var(--muted)">—</span>');
-    const accName = t.account_name || (acc ? acc.name : 'Unknown');
-
     return `<tr>
-      <td class="dt">
-        <div class="txn-date-cell">
-          <div class="txn-date-main">${tDate.formatted}</div>
-          <div class="day-badge">${tDate.day}</div>
-        </div>
-      </td>
-      <td>
-        <div class="entered-at-cell">
-          <div class="entered-at-date">${entered.date}</div>
-          <div class="entered-at-time">⏰ ${entered.time}</div>
-        </div>
-      </td>
-      <td><span class="badge b${badgeIdx}">${escHtml(accName)}</span></td>
+      <td class="dt">${t.date}</td>
+      <td class="dy">${day.slice(0,3)}</td>
+      <td><span class="badge b${idx % 4}">${acc ? escHtml(acc.name) : '?'}</span></td>
       <td class="cat-badge">${catLabel}</td>
       <td title="${escHtml(t.reason)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.reason)}</td>
       <td>${t.type === 'in' ? '<span class="tin">IN</span>' : '<span class="tout">OUT</span>'}</td>
       <td class="amt ${t.type === 'in' ? 'gi' : 'ri'}">${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}</td>
-      <td>
-        <div class="action-btns">
-          <button class="xbtn edit-btn" onclick="openEditTxnModal(${t.id})" title="Edit Transaction">✏️</button>
-          <button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete Transaction">🗑️</button>
-        </div>
-      </td>
+      <td><button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete">🗑️</button></td>
     </tr>`;
   }).join('');
-}
-
-// ─── EDIT TRANSACTION MODAL ───────────────────────────────────────────────────
-
-let editingTxnId = null;
-let editCurType = 'out';
-
-function openEditTxnModal(id) {
-  const t = txns.find(item => item.id === id);
-  if (!t) return;
-
-  editingTxnId = id;
-  const tDate = formatTransactionDate(t.date || t.transaction_date);
-  const entered = formatEnteredAt(t.created_at);
-
-  fillAccSelect();
-  fillCategorySelect();
-
-  const dateInput = document.getElementById('edit-txn-date');
-  const badge = document.getElementById('edit-txn-entered-badge');
-  const accSelect = document.getElementById('edit-txn-acc');
-  const catSelect = document.getElementById('edit-txn-cat');
-  const amtInput = document.getElementById('edit-txn-amt');
-  const rsnInput = document.getElementById('edit-txn-reason');
-
-  if (dateInput) dateInput.value = tDate.iso;
-  if (badge) badge.innerHTML = `<strong>ID:</strong> #${t.id} &nbsp;|&nbsp; <strong>Entered At:</strong> ${entered.full}`;
-  if (accSelect) accSelect.value = t.account_id;
-  if (catSelect) catSelect.value = t.category_id || '';
-  if (amtInput) amtInput.value = t.amount;
-  if (rsnInput) rsnInput.value = t.reason;
-
-  pickEditType(t.type || 'out');
-  document.getElementById('edit-txn-modal').classList.add('show');
-}
-
-function closeEditTxnModal() {
-  const modal = document.getElementById('edit-txn-modal');
-  if (modal) modal.classList.remove('show');
-  editingTxnId = null;
-}
-
-function pickEditType(type) {
-  editCurType = type;
-  const outBtn = document.getElementById('edit-tp-out');
-  const inBtn = document.getElementById('edit-tp-in');
-  if (outBtn) outBtn.className = 'topt' + (type === 'out' ? ' out' : '');
-  if (inBtn) inBtn.className = 'topt' + (type === 'in' ? ' in' : '');
-}
-
-async function saveEditTxn() {
-  if (!editingTxnId) return;
-
-  const date = document.getElementById('edit-txn-date').value;
-  const aid = parseInt(document.getElementById('edit-txn-acc').value);
-  const cid = document.getElementById('edit-txn-cat').value ? parseInt(document.getElementById('edit-txn-cat').value) : null;
-  const rsn = document.getElementById('edit-txn-reason').value.trim();
-  const amt = parseFloat(document.getElementById('edit-txn-amt').value);
-
-  if (!aid || isNaN(aid)) {
-    showToast('⚠️ Please select a valid account', true);
-    return;
-  }
-  if (!date || !rsn || isNaN(amt) || amt <= 0) {
-    showToast('⚠️ Please fill all fields correctly', true);
-    return;
-  }
-
-  try {
-    const updated = await apiCall(`/transactions/${editingTxnId}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        date,
-        transaction_date: date,
-        account_id: aid,
-        category_id: cid,
-        reason: rsn,
-        amount: amt,
-        type: editCurType
-      })
-    });
-
-    if (updated) {
-      const idx = txns.findIndex(item => item.id === editingTxnId);
-      if (idx !== -1) {
-        txns[idx] = updated;
-      }
-      sortTransactions(txns);
-    }
-
-    closeEditTxnModal();
-    drawDash();
-    drawHomeRecent();
-    refreshNav();
-    showToast('✅ Transaction updated!');
-  } catch (e) {
-    console.error('Failed to update transaction:', e);
-  }
 }
 
 async function deleteEntry(id) {
@@ -785,7 +541,6 @@ async function deleteEntry(id) {
   try {
     await apiCall(`/transactions/${id}`, { method: 'DELETE' });
     txns = txns.filter(t => t.id !== id);
-    sortTransactions(txns);
     drawDash();
     drawHomeRecent();
     refreshNav();
@@ -1161,22 +916,18 @@ async function loadCategories() {
 }
 
 function fillCategorySelect() {
-  const options = '<option value="">No Category</option>' +
-    categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
   const sel = document.getElementById('f-cat');
-  if (sel) sel.innerHTML = options;
-  const editSel = document.getElementById('edit-txn-cat');
-  if (editSel) editSel.innerHTML = options;
+  if (!sel) return;
+  sel.innerHTML = '<option value="">No Category</option>' +
+    categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
 }
 
 function fillAccSelect() {
-  const options = accounts.length
+  const sel = document.getElementById('f-acc');
+  if (!sel) return;
+  sel.innerHTML = accounts.length
     ? accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('')
     : '<option value="">-- No accounts (Create in Manage) --</option>';
-  const sel = document.getElementById('f-acc');
-  if (sel) sel.innerHTML = options;
-  const editSel = document.getElementById('edit-txn-acc');
-  if (editSel) editSel.innerHTML = options;
 }
 
 function populateCategoryFilter() {
@@ -1369,7 +1120,6 @@ async function loadData() {
     accounts = accountsData  || [];
     txns     = txnsData      || [];
     budgets  = budgetsData   || [];
-    sortTransactions(txns);
 
     await Promise.all([loadCategories(), loadUserProfile()]);
     fillAccSelect();
