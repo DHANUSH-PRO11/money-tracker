@@ -547,7 +547,7 @@ app.delete('/api/categories/:id', authenticateToken, (req, res) => {
 app.get('/api/transactions', authenticateToken, (req, res) => {
   const { startDate, endDate, categoryId, accountId } = req.query;
   let query = `
-    SELECT t.*, a.name as account_name, c.name as category_name,
+    SELECT t.*, t.date as transaction_date, a.name as account_name, c.name as category_name,
            c.color as category_color, c.icon as category_icon
     FROM transactions t
     JOIN accounts a ON t.account_id = a.id
@@ -561,7 +561,7 @@ app.get('/api/transactions', authenticateToken, (req, res) => {
   if (categoryId){ query += ' AND t.category_id = ?'; params.push(categoryId); }
   if (accountId) { query += ' AND t.account_id = ?'; params.push(accountId); }
 
-  query += ' ORDER BY t.date DESC, t.created_at DESC, t.id DESC';
+  query += ' ORDER BY t.created_at DESC, t.id DESC';
 
   db.all(query, params, (err, rows) =>
     err ? res.status(500).json({ error: err.message }) : res.json(rows)
@@ -570,9 +570,10 @@ app.get('/api/transactions', authenticateToken, (req, res) => {
 
 // Create new transaction (only for user's own accounts)
 app.post('/api/transactions', authenticateToken, (req, res) => {
-  const { date, account_id, category_id, reason, amount, type } = req.body;
+  const { date, transaction_date, account_id, category_id, reason, amount, type } = req.body;
+  const txnDate = (transaction_date || date || '').trim();
 
-  if (!date || !account_id || !reason || !amount || !type)
+  if (!txnDate || !account_id || !reason || !amount || !type)
     return res.status(400).json({ error: 'All required fields must be provided' });
   if (amount <= 0)
     return res.status(400).json({ error: 'Amount must be greater than 0' });
@@ -585,15 +586,17 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!account) return res.status(403).json({ error: 'Account not found or access denied' });
 
+      const createdAt = new Date().toISOString();
+
       db.run(
-        'INSERT INTO transactions (date, account_id, category_id, reason, amount, type) VALUES (?, ?, ?, ?, ?, ?)',
-        [date, account_id, category_id || null, reason, amount, type],
+        'INSERT INTO transactions (date, account_id, category_id, reason, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [txnDate, account_id, category_id || null, reason.trim(), amount, type, createdAt],
         function(err) {
           if (err) return res.status(500).json({ error: err.message });
           const insertId = this.lastID;
 
           db.get(
-            `SELECT t.*, a.name as account_name, c.name as category_name,
+            `SELECT t.*, t.date as transaction_date, a.name as account_name, c.name as category_name,
                     c.color as category_color, c.icon as category_icon
              FROM transactions t
              JOIN accounts a ON t.account_id = a.id
@@ -603,6 +606,63 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
             (err, row) => {
               if (err) return res.status(500).json({ error: err.message });
               res.json(row);
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// Update transaction (only user's own)
+app.put('/api/transactions/:id', authenticateToken, (req, res) => {
+  const { date, transaction_date, account_id, category_id, reason, amount, type } = req.body;
+  const txnDate = (transaction_date || date || '').trim();
+
+  if (!txnDate || !account_id || !reason || !amount || !type)
+    return res.status(400).json({ error: 'All required fields must be provided' });
+  if (amount <= 0)
+    return res.status(400).json({ error: 'Amount must be greater than 0' });
+
+  // Verify transaction belongs to user
+  db.get(
+    `SELECT t.id FROM transactions t
+     JOIN accounts a ON t.account_id = a.id
+     WHERE t.id = ? AND a.user_id = ?`,
+    [req.params.id, req.user.id],
+    (err, txn) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!txn) return res.status(404).json({ error: 'Transaction not found or access denied' });
+
+      // Verify target account belongs to user
+      db.get(
+        'SELECT id FROM accounts WHERE id = ? AND user_id = ?',
+        [account_id, req.user.id],
+        (err2, account) => {
+          if (err2) return res.status(500).json({ error: err2.message });
+          if (!account) return res.status(403).json({ error: 'Target account not found' });
+
+          db.run(
+            `UPDATE transactions 
+             SET date = ?, account_id = ?, category_id = ?, reason = ?, amount = ?, type = ?
+             WHERE id = ?`,
+            [txnDate, account_id, category_id || null, reason.trim(), parseFloat(amount), type, req.params.id],
+            function(err3) {
+              if (err3) return res.status(500).json({ error: err3.message });
+
+              db.get(
+                `SELECT t.*, t.date as transaction_date, a.name as account_name, c.name as category_name,
+                        c.color as category_color, c.icon as category_icon
+                 FROM transactions t
+                 JOIN accounts a ON t.account_id = a.id
+                 LEFT JOIN categories c ON t.category_id = c.id
+                 WHERE t.id = ?`,
+                [req.params.id],
+                (err4, row) => {
+                  if (err4) return res.status(500).json({ error: err4.message });
+                  res.json(row);
+                }
+              );
             }
           );
         }

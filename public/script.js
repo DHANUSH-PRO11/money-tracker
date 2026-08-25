@@ -341,68 +341,99 @@ function pickType(t) {
   document.getElementById('tp-in').className  = 'topt' + (t === 'in'  ? ' in'  : '');
 }
 
-/** Sort transactions by date (descending), then entry time/created_at (descending), then id (descending) */
+/** Formats a date string "YYYY-MM-DD" or "DD/MM/YYYY" without any timezone shift */
+function formatTransactionDate(dateStr) {
+  if (!dateStr) return { formatted: '—', day: '—', raw: '', iso: '' };
+
+  const clean = String(dateStr).slice(0, 10);
+  let year, month, day;
+
+  if (clean.includes('-')) {
+    const parts = clean.split('-').map(Number);
+    year = parts[0];
+    month = parts[1];
+    day = parts[2];
+  } else if (clean.includes('/')) {
+    const parts = clean.split('/').map(Number);
+    if (parts[0] > 1000) {
+      year = parts[0];
+      month = parts[1];
+      day = parts[2];
+    } else {
+      day = parts[0];
+      month = parts[1];
+      year = parts[2];
+    }
+  }
+
+  if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) {
+    return { formatted: clean, day: '—', raw: clean, iso: clean };
+  }
+
+  // Construct local date without UTC conversion
+  const d = new Date(year, month - 1, day);
+  const dayIndex = d.getDay();
+  const dayName = !isNaN(dayIndex) && DAYS[dayIndex] ? DAYS[dayIndex].slice(0, 3) : '—';
+  const pad = n => String(n).padStart(2, '0');
+  const formatted = `${pad(day)}/${pad(month)}/${year}`;
+  const iso = `${year}-${pad(month)}-${pad(day)}`;
+
+  return {
+    formatted,
+    iso,
+    day: dayName,
+    raw: clean
+  };
+}
+
+/** Formats the creation timestamp into a clean, localized date & time */
+function formatEnteredAt(timestamp) {
+  if (!timestamp) return { date: '—', time: '—', full: '—' };
+
+  let d = new Date(timestamp);
+  // If timestamp is SQLite "YYYY-MM-DD HH:MM:SS" (UTC), convert to ISO
+  if (isNaN(d.getTime())) {
+    if (typeof timestamp === 'string' && timestamp.includes(' ')) {
+      d = new Date(timestamp.replace(' ', 'T') + 'Z');
+    }
+  }
+
+  if (isNaN(d.getTime())) {
+    return { date: String(timestamp), time: '', full: String(timestamp) };
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  const day = pad(d.getDate());
+  const month = pad(d.getMonth() + 1);
+  const year = d.getFullYear();
+  const dateStr = `${day}/${month}/${year}`;
+
+  let hours = d.getHours();
+  const minutes = pad(d.getMinutes());
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  const timeStr = `${pad(hours)}:${minutes} ${ampm}`;
+
+  return {
+    date: dateStr,
+    time: timeStr,
+    full: `${dateStr} ${timeStr}`
+  };
+}
+
+/** Sort transactions by created_at / entered_at descending (newest entry first) */
 function sortTransactions(list) {
   if (!Array.isArray(list)) return [];
   return list.sort((a, b) => {
-    // 1. Compare entry date descending (YYYY-MM-DD)
-    const dateA = (a.date || '').slice(0, 10);
-    const dateB = (b.date || '').slice(0, 10);
-    if (dateA !== dateB) {
-      return dateB.localeCompare(dateA);
-    }
-
-    // 2. Compare created_at timestamp descending
+    // 1. Compare created_at timestamp descending
     const timeA = a.created_at || '';
     const timeB = b.created_at || '';
     if (timeA && timeB && timeA !== timeB) {
       return timeB.localeCompare(timeA);
     }
-
-    // 3. Fallback by id descending
+    // 2. Fallback by id descending
     return (b.id || 0) - (a.id || 0);
   });
-}
-
-/** Safely parse and format transaction date and time */
-function formatTxnDate(dateStr, createdAt) {
-  if (!dateStr) return { dateDisplay: '—', day: '—', timeDisplay: '' };
-
-  const cleanDate = String(dateStr).slice(0, 10);
-  const parts = cleanDate.split('-');
-  let d;
-  if (parts.length === 3) {
-    d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-  } else {
-    d = new Date(dateStr);
-  }
-
-  const dayIndex = d.getDay();
-  const day = !isNaN(dayIndex) && DAYS[dayIndex] ? DAYS[dayIndex].slice(0, 3) : '—';
-
-  let timeDisplay = '';
-  const timestamp = createdAt || (String(dateStr).length > 10 ? String(dateStr) : '');
-  if (timestamp) {
-    const tParts = timestamp.includes('T') ? timestamp.split('T') : timestamp.split(' ');
-    if (tParts.length > 1) {
-      const timeStr = tParts[1].slice(0, 5); // "HH:MM"
-      const [hh, mm] = timeStr.split(':');
-      if (hh !== undefined && mm !== undefined) {
-        const hour = parseInt(hh, 10);
-        if (!isNaN(hour)) {
-          const ampm = hour >= 12 ? 'PM' : 'AM';
-          const h12 = hour % 12 || 12;
-          timeDisplay = `${h12}:${mm} ${ampm}`;
-        }
-      }
-    }
-  }
-
-  return {
-    dateDisplay: cleanDate,
-    day,
-    timeDisplay
-  };
 }
 
 async function addEntry() {
@@ -427,7 +458,15 @@ async function addEntry() {
   try {
     const newTxn = await apiCall('/transactions', {
       method: 'POST',
-      body: JSON.stringify({ date, account_id: aid, category_id: cid, reason: rsn, amount: amt, type: curType })
+      body: JSON.stringify({
+        date,
+        transaction_date: date,
+        account_id: aid,
+        category_id: cid,
+        reason: rsn,
+        amount: amt,
+        type: curType
+      })
     });
 
     if (newTxn) {
@@ -485,16 +524,19 @@ function drawHomeRecent() {
       const icon = t.category_icon || (cat ? cat.icon : (t.type === 'in' ? '💰' : '💸'));
       const acc = accounts.find(a => a.id === t.account_id);
       const accName = t.account_name || (acc ? acc.name : '');
-      const parsed = formatTxnDate(t.date, t.created_at);
-      const metaTime = parsed.timeDisplay ? ` · ${parsed.timeDisplay}` : '';
-      const metaAcc = accName ? ` · ${escHtml(accName)}` : '';
+      const tDate = formatTransactionDate(t.date || t.transaction_date);
+      const entered = formatEnteredAt(t.created_at);
 
       return `
       <div class="recent-item">
         <div class="recent-icon">${icon}</div>
         <div class="recent-info">
           <div class="recent-reason">${escHtml(t.reason)}</div>
-          <div class="recent-meta">${parsed.dateDisplay}${metaTime}${metaAcc}</div>
+          <div class="recent-meta">
+            <span class="meta-tag">📅 ${tDate.formatted} (${tDate.day})</span>
+            <span class="meta-tag meta-entered">⏰ Entered: ${entered.full}</span>
+            ${accName ? `<span class="meta-tag meta-acc">🏦 ${escHtml(accName)}</span>` : ''}
+          </div>
         </div>
         <div class="recent-amount ${t.type === 'in' ? 'gi' : 'ri'}">
           ${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}
@@ -589,7 +631,7 @@ function drawTable() {
 
     const matchCat     = !catVal || String(t.category_id) === String(catVal);
     const matchAccount = curFilter === 'all' || String(t.account_id) === String(curFilter);
-    const txnDate      = (t.date || '').slice(0, 10);
+    const txnDate      = (t.date || t.transaction_date || '').slice(0, 10);
     const matchDate    = !cutoff || txnDate >= cutoff;
     return matchSearch && matchCat && matchAccount && matchDate;
   });
@@ -602,7 +644,8 @@ function drawTable() {
   empty.style.display = 'none';
 
   tbody.innerHTML = rows.map(t => {
-    const parsed = formatTxnDate(t.date, t.created_at);
+    const tDate = formatTransactionDate(t.date || t.transaction_date);
+    const entered = formatEnteredAt(t.created_at);
     const acc = accounts.find(a => a.id === t.account_id);
     const idx = accounts.findIndex(a => a.id === t.account_id);
     const badgeIdx = idx >= 0 ? idx % 4 : 0;
@@ -613,18 +656,128 @@ function drawTable() {
 
     return `<tr>
       <td class="dt">
-        <span>${parsed.dateDisplay}</span>
-        ${parsed.timeDisplay ? `<div class="txn-time">${parsed.timeDisplay}</div>` : ''}
+        <div class="txn-date-cell">
+          <div class="txn-date-main">${tDate.formatted}</div>
+          <div class="day-badge">${tDate.day}</div>
+        </div>
       </td>
-      <td class="dy">${parsed.day}</td>
+      <td>
+        <div class="entered-at-cell">
+          <div class="entered-at-date">${entered.date}</div>
+          <div class="entered-at-time">⏰ ${entered.time}</div>
+        </div>
+      </td>
       <td><span class="badge b${badgeIdx}">${escHtml(accName)}</span></td>
       <td class="cat-badge">${catLabel}</td>
       <td title="${escHtml(t.reason)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.reason)}</td>
       <td>${t.type === 'in' ? '<span class="tin">IN</span>' : '<span class="tout">OUT</span>'}</td>
       <td class="amt ${t.type === 'in' ? 'gi' : 'ri'}">${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}</td>
-      <td><button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete">🗑️</button></td>
+      <td>
+        <div class="action-btns">
+          <button class="xbtn edit-btn" onclick="openEditTxnModal(${t.id})" title="Edit Transaction">✏️</button>
+          <button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete Transaction">🗑️</button>
+        </div>
+      </td>
     </tr>`;
   }).join('');
+}
+
+// ─── EDIT TRANSACTION MODAL ───────────────────────────────────────────────────
+
+let editingTxnId = null;
+let editCurType = 'out';
+
+function openEditTxnModal(id) {
+  const t = txns.find(item => item.id === id);
+  if (!t) return;
+
+  editingTxnId = id;
+  const tDate = formatTransactionDate(t.date || t.transaction_date);
+  const entered = formatEnteredAt(t.created_at);
+
+  fillAccSelect();
+  fillCategorySelect();
+
+  const dateInput = document.getElementById('edit-txn-date');
+  const badge = document.getElementById('edit-txn-entered-badge');
+  const accSelect = document.getElementById('edit-txn-acc');
+  const catSelect = document.getElementById('edit-txn-cat');
+  const amtInput = document.getElementById('edit-txn-amt');
+  const rsnInput = document.getElementById('edit-txn-reason');
+
+  if (dateInput) dateInput.value = tDate.iso;
+  if (badge) badge.innerHTML = `<strong>ID:</strong> #${t.id} &nbsp;|&nbsp; <strong>Entered At:</strong> ${entered.full}`;
+  if (accSelect) accSelect.value = t.account_id;
+  if (catSelect) catSelect.value = t.category_id || '';
+  if (amtInput) amtInput.value = t.amount;
+  if (rsnInput) rsnInput.value = t.reason;
+
+  pickEditType(t.type || 'out');
+  document.getElementById('edit-txn-modal').classList.add('show');
+}
+
+function closeEditTxnModal() {
+  const modal = document.getElementById('edit-txn-modal');
+  if (modal) modal.classList.remove('show');
+  editingTxnId = null;
+}
+
+function pickEditType(type) {
+  editCurType = type;
+  const outBtn = document.getElementById('edit-tp-out');
+  const inBtn = document.getElementById('edit-tp-in');
+  if (outBtn) outBtn.className = 'topt' + (type === 'out' ? ' out' : '');
+  if (inBtn) inBtn.className = 'topt' + (type === 'in' ? ' in' : '');
+}
+
+async function saveEditTxn() {
+  if (!editingTxnId) return;
+
+  const date = document.getElementById('edit-txn-date').value;
+  const aid = parseInt(document.getElementById('edit-txn-acc').value);
+  const cid = document.getElementById('edit-txn-cat').value ? parseInt(document.getElementById('edit-txn-cat').value) : null;
+  const rsn = document.getElementById('edit-txn-reason').value.trim();
+  const amt = parseFloat(document.getElementById('edit-txn-amt').value);
+
+  if (!aid || isNaN(aid)) {
+    showToast('⚠️ Please select a valid account', true);
+    return;
+  }
+  if (!date || !rsn || isNaN(amt) || amt <= 0) {
+    showToast('⚠️ Please fill all fields correctly', true);
+    return;
+  }
+
+  try {
+    const updated = await apiCall(`/transactions/${editingTxnId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        date,
+        transaction_date: date,
+        account_id: aid,
+        category_id: cid,
+        reason: rsn,
+        amount: amt,
+        type: editCurType
+      })
+    });
+
+    if (updated) {
+      const idx = txns.findIndex(item => item.id === editingTxnId);
+      if (idx !== -1) {
+        txns[idx] = updated;
+      }
+      sortTransactions(txns);
+    }
+
+    closeEditTxnModal();
+    drawDash();
+    drawHomeRecent();
+    refreshNav();
+    showToast('✅ Transaction updated!');
+  } catch (e) {
+    console.error('Failed to update transaction:', e);
+  }
 }
 
 async function deleteEntry(id) {
@@ -1008,18 +1161,22 @@ async function loadCategories() {
 }
 
 function fillCategorySelect() {
-  const sel = document.getElementById('f-cat');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">No Category</option>' +
+  const options = '<option value="">No Category</option>' +
     categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
+  const sel = document.getElementById('f-cat');
+  if (sel) sel.innerHTML = options;
+  const editSel = document.getElementById('edit-txn-cat');
+  if (editSel) editSel.innerHTML = options;
 }
 
 function fillAccSelect() {
-  const sel = document.getElementById('f-acc');
-  if (!sel) return;
-  sel.innerHTML = accounts.length
+  const options = accounts.length
     ? accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('')
     : '<option value="">-- No accounts (Create in Manage) --</option>';
+  const sel = document.getElementById('f-acc');
+  if (sel) sel.innerHTML = options;
+  const editSel = document.getElementById('edit-txn-acc');
+  if (editSel) editSel.innerHTML = options;
 }
 
 function populateCategoryFilter() {
