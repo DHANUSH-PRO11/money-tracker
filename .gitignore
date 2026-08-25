@@ -4,5 +4,7 @@ yarn-debug.log*
 yarn-error.log*
 .env
 .DS_Store
-Thumbs.db
-
+moneyflow.db
+*.db
+*.sqlite
+*.sqlite3
