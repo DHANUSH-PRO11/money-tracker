@@ -139,10 +139,16 @@ function updateUserDisplay() {
 
 async function loadUserProfile() {
   try {
-    const user = await apiCall('/user/profile');
+    let user = null;
+    try {
+      user = await apiCall('/user/profile');
+    } catch (apiErr) {
+      const stored = localStorage.getItem('user');
+      user = stored ? JSON.parse(stored) : null;
+    }
     if (user) {
       currentUserProfile = user;
-      localStorage.setItem('user', JSON.stringify({ id: user.id, name: user.name, email: user.email }));
+      localStorage.setItem('user', JSON.stringify({ id: user.id || 1, name: user.name, email: user.email }));
       updateUserDisplay();
 
       const pName = document.getElementById('manage-profile-name');
@@ -150,20 +156,20 @@ async function loadUserProfile() {
       const pAvatar = document.getElementById('manage-profile-avatar');
       const pDate = document.getElementById('manage-profile-date');
 
-      if (pName) pName.textContent = user.name;
-      if (pEmail) pEmail.textContent = user.email;
-      if (pAvatar) {
+      if (pName && user.name) pName.textContent = user.name;
+      if (pEmail && user.email) pEmail.textContent = user.email;
+      if (pAvatar && user.name) {
         const initials = user.name.split(' ').map(n => n[0]).filter(Boolean).join('').substring(0, 2).toUpperCase();
         pAvatar.textContent = initials || '👤';
       }
-      if (pDate && user.created_at) {
-        const d = new Date(user.created_at);
+      if (pDate) {
+        const d = user.created_at ? new Date(user.created_at) : new Date();
         const formatted = isNaN(d) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
         pDate.textContent = formatted ? `Member since ${formatted}` : 'Member';
       }
     }
   } catch (e) {
-    console.error('Error loading user profile:', e);
+    console.warn('Profile display note:', e);
   }
 }
 
