@@ -92,54 +92,55 @@ const RAW_DATA = `DATE	DAY	GPAY	REASON	BALANCE	CASH	REASON	BALANCE	FANPAY	REASON
 5/1/2026	Friday	500	appa 	1391.02			0			52.61	1443.63
 5/2/2026	Saturday			1391.02			0			52.61	1443.63
 5/3/2026	Sunday			1391.02	240	appa	240			52.61	1683.63
-5/4/2026	Monday	-10	choculate	1381.02			240			52.61	1673.63
-		-50	snacks	1331.02			240			52.61	1623.63
-5/5/2026	Tuesday	-10	xerox	1321.02			240			52.61	1613.63
-		-10	xerox	1311.02			240			52.61	1603.63
-5/6/2026	Wednesday	-120	choculate	1191.02			240			52.61	1483.63
-		-50	petrol	1141.02			240			52.61	1433.63
-5/7/2026	Thursday	-40	snacks	1101.02			240			52.61	1393.63
-5/8/2026	Friday	-20	xerox	1081.02			240			52.61	1373.63
-5/9/2026	Saturday			1081.02			240			52.61	1373.63
-5/10/2026	Sunday			1081.02			240			52.61	1373.63
-5/11/2026	Monday	-180	xerox 	901.02			240			52.61	1193.63
-5/12/2026	Tuesday	-20	xerox	881.02			240			52.61	1173.63
-5/13/2026	Wednesday	-10	xerox	871.02			240			52.61	1163.63
-5/14/2026	Thursday	-60	xerox	811.02			240			52.61	1103.63
-5/15/2026	Friday	-50	xerox 	761.02			240			52.61	1053.63
-5/16/2026	Saturday			761.02			240			52.61	1053.63
-5/17/2026	Sunday	150	appa	911.02			240			52.61	1203.63
-5/18/2026	Monday			911.02			240			52.61	1203.63
-5/19/2026	Tuesday			911.02			240			52.61	1203.63
-5/20/2026	Wednesday	-20	xerox	891.02			240			52.61	1183.63
-5/21/2026	Thursday	-20	snacks	871.02			240			52.61	1163.63
-5/22/2026	Friday			871.02			240			52.61	1163.63
-5/23/2026	Saturday	100	manasa	971.02			240			52.61	1263.63
-5/24/2026	Sunday			971.02			240			52.61	1263.63
-5/25/2026	Monday			971.02			240			52.61	1263.63
-5/26/2026	Tuesday	-20	snacks	951.02			240			52.61	1243.63
-5/27/2026	Wednesday	-10	snacks	941.02			240			52.61	1233.63
-5/28/2026	Thursday	-20	snacks	921.02			240			52.61	1213.63
-5/29/2026	Friday			921.02	-40	bus spare	200			52.61	1173.63
-5/30/2026	Saturday			921.02			200			52.61	1173.63
-5/31/2026	Sunday	2000	appa	2921.02			200			52.61	3173.63
-6/1/2026	Monday			2921.02	-40	bus spare	160			52.61	3133.63
-6/2/2026	Tuesday	-20	xerox	2901.02			160			52.61	3113.63
-6/3/2026	Wednesday	-20	water bottle	2881.02			160			52.61	3093.63
-6/4/2026	Thursday			2881.02	-50	bus spare	110			52.61	3043.63
-6/5/2026	Friday	-2000	fees	881.02			110			52.61	1043.63
-6/6/2026	Saturday			881.02			110			52.61	1043.63
-6/7/2026	Sunday	2000	appa	2881.02			110			52.61	3043.63
-6/8/2026	Monday			2881.02	-50	bus spare	60			52.61	2993.63
-6/9/2026	Tuesday			2881.02			60			52.61	2993.63
-6/10/2026	Wednesday			2881.02	-50	bus spare	10			52.61	2943.63
-6/11/2026	Thursday	-110	sem fees	2771.02			10			52.61	2833.63
-		-50	food	2721.02			10			52.61	2783.63
-6/12/2026	Friday	-20	snacks	2701.02			10			52.61	2763.63
-6/13/2026	Saturday			2701.02			10			52.61	2763.63
-6/14/2026	Sunday			2701.02			10			52.61	2763.63
-6/15/2026	Monday	-200	fees	2501.02			10			52.61	2563.63
-6/16/2026	Tuesday	418	sem fee (extra)	2919.02	90	appa	100	48.93	fan pay cash back	101.54	3120.56
+5/4/2026	Monday			1391.02	-40	bus spare	200			52.61	1643.63
+5/5/2026	Tuesday			1391.02			200			52.61	1643.63
+5/6/2026	Wednesday	20	account	1411.02	-20	acount	180			52.61	1643.63
+5/7/2026	Thursday	950	frame	2361.02			180			52.61	2593.63
+5/8/2026	Friday			2361.02			180			52.61	2593.63
+5/9/2026	Saturday	-200	food,snacks,	2161.02			180			52.61	2393.63
+		-110	xerox	2051.02			180			52.61	2283.63
+5/10/2026	Sunday	-1500	abi return	551.02			180			52.61	783.63
+5/11/2026	Monday			551.02			180			52.61	783.63
+5/12/2026	Tuesday			551.02			180			52.61	783.63
+5/13/2026	Wednesday			551.02			180	34.93	cash back	87.54	818.56
+5/14/2026	Thursday			551.02			180			87.54	818.56
+5/15/2026	Friday			551.02			180			87.54	818.56
+5/16/2026	Saturday			551.02			180			87.54	818.56
+5/17/2026	Sunday	-87	barani cake	464.02			180	40	note waste 	127.54	771.56
+				464.02			180	-25	ice cream	102.54	746.56
+5/18/2026	Monday	300	frame,account	764.02	-100	account	80			102.54	946.56
+5/19/2026	Tuesday	-72	dress(vineth mama's)	692.02	-40	bus sprare	40			102.54	834.56
+		-40	juice	652.02			40			102.54	794.56
+5/20/2026	Wednesday			652.02			40			102.54	794.56
+5/21/2026	Thursday			652.02			40			102.54	794.56
+5/22/2026	Friday			652.02			40			102.54	794.56
+5/23/2026	Saturday	-236	depit card annual charges 	416.02	100	appa cash 	140			102.54	658.56
+5/24/2026	Sunday	1000	srimathi return amount 	1416.02	-100	haircut	40			102.54	1558.56
+5/25/2026	Monday	-20	haircut	1396.02			40			102.54	1538.56
+5/26/2026	Tuesday			1396.02			40			102.54	1538.56
+5/27/2026	Wednesday			1396.02			40			102.54	1538.56
+5/28/2026	Thursday	-6	xerox	1390.02			40			102.54	1532.56
+5/29/2026	Friday			1390.02			40			102.54	1532.56
+5/30/2026	Saturday	1000	appa 	2390.02	100	appa	140			102.54	2632.56
+5/31/2026	Sunday	30	naveen mouse pad	2420.02	-40	bus spare	100			102.54	2622.56
+6/1/2026	Monday	-135	food 	2285.02	150	grandfather and amma	250			102.54	2637.56
+6/2/2026	Tuesday	230	account	2515.02	-230	account	20			102.54	2637.56
+6/3/2026	Wednesday	-80	note 2	2435.02			20			102.54	2557.56
+6/4/2026	Thursday	-20	snacks	2415.02			20			102.54	2537.56
+6/5/2026	Friday	800	inten	3215.02			20			102.54	3337.56
+6/6/2026	Saturday	-60	snacks	3155.02			20			102.54	3277.56
+6/7/2026	Sunday			3155.02			20			102.54	3277.56
+6/8/2026	Monday	-100	juice	3055.02			20			102.54	3177.56
+6/9/2026	Tuesday			3055.02			20			102.54	3177.56
+6/10/2026	Wednesday	-60	snacks	2995.02			20			102.54	3117.56
+6/11/2026	Thursday			2995.02			20			102.54	3117.56
+6/12/2026	Friday	-4	xerox	2991.02			20			102.54	3113.56
+6/13/2026	Saturday	-40	snacks	2951.02			20			102.54	3073.56
+		-21	sms charges	2930.02			20			102.54	3052.56
+6/14/2026	Sunday	-11	recharge	2919.02	-20	bus spare	0			102.54	3021.56
+6/15/2026	Monday			2919.02	150	appa cash	150			102.54	3171.56
+				2919.02	-50	bus spare	100			102.54	3121.56
+6/16/2026	Tuesday			2919.02			100			102.54	3121.56
 6/17/2026	Wednesday	-2000	account	919.02	-50	bus spare	50	2000	account	2102.54	3071.56
 6/18/2026	Thursday	18340	corn amount	19259.02			50			2102.54	21411.56
 6/19/2026	Friday	-17000	cash	2259.02			50			2102.54	4411.56
@@ -209,7 +210,12 @@ const RAW_DATA = `DATE	DAY	GPAY	REASON	BALANCE	CASH	REASON	BALANCE	FANPAY	REASON
 8/18/2026	Tuesday			1019.02			350			145	1514.02
 8/19/2026	Wednesday			1019.02			350			145	1514.02
 8/20/2026	Thursday	-300	barani	719.02			350	-100	kishore	45	1114.02
-8/21/2026	Friday	300	barani	1019.02			350			45	1414.02`;
+8/21/2026	Friday	300	barani	1019.02			350			45	1414.02
+8/22/2026	Saturday			1019.02	-100	appa	250			45	1314.02
+8/23/2026	Sunday			1019.02			250			45	1314.02
+8/24/2026	Monday			1019.02	-50	bus spare	200			45	1264.02
+8/25/2026	Tuesday	500	appa 	1519.02			200			45	1764.02
+8/26/2026	Wednesday	-180	food	1339.02			200			45	1584.02`;
 
 function parseDate(dStr, fallbackDate) {
   if (!dStr || !dStr.trim()) return fallbackDate;
@@ -326,6 +332,8 @@ function getCategoryMapping(reason, categories) {
 function ensureUserDataset(db, userId, callback) {
   if (!db || !userId) return callback && callback();
 
+  const parsedTxns = parseDataset();
+
   // Check how many transactions exist for this user
   db.get(
     'SELECT count(t.id) as count FROM transactions t JOIN accounts a ON t.account_id = a.id WHERE a.user_id = ?',
@@ -336,13 +344,12 @@ function ensureUserDataset(db, userId, callback) {
         return callback && callback(err);
       }
 
-      // If user already has transactions, no need to seed
-      if (row && row.count > 0) {
+      // If user already has the full latest dataset, no need to re-seed
+      if (row && row.count >= parsedTxns.length) {
         return callback && callback(null, row.count);
       }
 
-      console.log(`🌱 Seeding 162-item MoneyFlow dataset for user ID ${userId}...`);
-      const parsedTxns = parseDataset();
+      console.log(`🌱 Seeding ${parsedTxns.length}-item MoneyFlow dataset for user ID ${userId}...`);
 
       db.serialize(() => {
         // Clean empty unused default accounts
@@ -373,22 +380,25 @@ function ensureUserDataset(db, userId, callback) {
         });
 
         function insertTransactions() {
-          db.all('SELECT id, name FROM categories', (catErr, cats) => {
-            const categories = cats || [];
-            const stmt = db.prepare('INSERT INTO transactions (date, account_id, category_id, reason, amount, type) VALUES (?, ?, ?, ?, ?, ?)');
+          const accIds = Object.values(accountMap);
+          db.run(`DELETE FROM transactions WHERE account_id IN (${accIds.join(',')})`, (delErr) => {
+            db.all('SELECT id, name FROM categories', (catErr, cats) => {
+              const categories = cats || [];
+              const stmt = db.prepare('INSERT INTO transactions (date, account_id, category_id, reason, amount, type) VALUES (?, ?, ?, ?, ?, ?)');
 
-            parsedTxns.forEach(tx => {
-              const catId = getCategoryMapping(tx.reason, categories);
-              const accId = accountMap[tx.account];
-              if (accId) {
-                stmt.run(tx.date, accId, catId, tx.reason, tx.amount, tx.type);
-              }
-            });
+              parsedTxns.forEach(tx => {
+                const catId = getCategoryMapping(tx.reason, categories);
+                const accId = accountMap[tx.account];
+                if (accId) {
+                  stmt.run(tx.date, accId, catId, tx.reason, tx.amount, tx.type);
+                }
+              });
 
-            stmt.finalize((finErr) => {
-              if (finErr) console.error('Error finalizing seed insert:', finErr);
-              else console.log(`✓ Seeded ${parsedTxns.length} transactions for user ID ${userId}.`);
-              if (callback) callback(finErr, parsedTxns.length);
+              stmt.finalize((finErr) => {
+                if (finErr) console.error('Error finalizing seed insert:', finErr);
+                else console.log(`✓ Seeded ${parsedTxns.length} transactions for user ID ${userId}.`);
+                if (callback) callback(finErr, parsedTxns.length);
+              });
             });
           });
         }
@@ -397,4 +407,4 @@ function ensureUserDataset(db, userId, callback) {
   );
 }
 
-module.exports = { ensureUserDataset, parseDataset };
+module.exports = { ensureUserDataset, parseDataset, RAW_DATA };
