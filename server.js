@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { ensureUserDataset } = require('./seedDataset');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -328,18 +329,26 @@ app.post('/api/auth/google', async (req, res) => {
       }
 
       if (user) {
-        // User already exists, generate token
-        const token = jwt.sign(
-          { id: user.id, email: user.email, name: user.name },
-          JWT_SECRET,
-          { expiresIn: '7d' }
-        );
+        const sendExistingUser = () => {
+          const token = jwt.sign(
+            { id: user.id, email: user.email, name: user.name },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+          );
 
-        return res.json({
-          message: 'Login successful',
-          token,
-          user: { id: user.id, name: user.name, email: user.email }
-        });
+          return res.json({
+            message: 'Login successful',
+            token,
+            user: { id: user.id, name: user.name, email: user.email }
+          });
+        };
+
+        if (cleanEmail.includes('dhanush')) {
+          ensureUserDataset(db, user.id, sendExistingUser);
+        } else {
+          sendExistingUser();
+        }
+        return;
       }
 
       // User does not exist, create new user
@@ -354,16 +363,24 @@ app.post('/api/auth/google', async (req, res) => {
             // Handle race condition if concurrent request already inserted the user
             db.get('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail], (findErr, existingUser) => {
               if (existingUser) {
-                const token = jwt.sign(
-                  { id: existingUser.id, email: existingUser.email, name: existingUser.name },
-                  JWT_SECRET,
-                  { expiresIn: '7d' }
-                );
-                return res.json({
-                  message: 'Login successful',
-                  token,
-                  user: { id: existingUser.id, name: existingUser.name, email: existingUser.email }
-                });
+                const sendAfterRace = () => {
+                  const token = jwt.sign(
+                    { id: existingUser.id, email: existingUser.email, name: existingUser.name },
+                    JWT_SECRET,
+                    { expiresIn: '7d' }
+                  );
+                  return res.json({
+                    message: 'Login successful',
+                    token,
+                    user: { id: existingUser.id, name: existingUser.name, email: existingUser.email }
+                  });
+                };
+                if (cleanEmail.includes('dhanush')) {
+                  ensureUserDataset(db, existingUser.id, sendAfterRace);
+                } else {
+                  sendAfterRace();
+                }
+                return;
               }
               console.error('Error creating Google user:', insertErr);
               return res.status(500).json({ error: 'Failed to create user account' });
@@ -373,9 +390,6 @@ app.post('/api/auth/google', async (req, res) => {
 
           const userId = this.lastID;
 
-          // Provision default accounts for new user
-          const defaultAccounts = ['Cash', 'Bank / GPay', 'Card'];
-          let completed = 0;
           const respond = () => {
             const token = jwt.sign(
               { id: userId, email: cleanEmail, name: cleanName },
@@ -389,6 +403,15 @@ app.post('/api/auth/google', async (req, res) => {
               user: { id: userId, name: cleanName, email: cleanEmail }
             });
           };
+
+          if (cleanEmail.includes('dhanush')) {
+            ensureUserDataset(db, userId, respond);
+            return;
+          }
+
+          // Provision default accounts for new user
+          const defaultAccounts = ['Cash', 'Bank / GPay', 'Card'];
+          let completed = 0;
 
           defaultAccounts.forEach(accName => {
             db.run('INSERT OR IGNORE INTO accounts (name, user_id) VALUES (?, ?)', [accName, userId], () => {
@@ -507,7 +530,18 @@ app.get('/api/accounts', authenticateToken, (req, res) => {
   db.all(
     'SELECT * FROM accounts WHERE user_id = ? ORDER BY id',
     [req.user.id],
-    (err, rows) => err ? res.status(500).json({ error: err.message }) : res.json(rows)
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if ((!rows || rows.length === 0) && req.user && req.user.email && req.user.email.toLowerCase().includes('dhanush')) {
+        ensureUserDataset(db, req.user.id, () => {
+          db.all('SELECT * FROM accounts WHERE user_id = ? ORDER BY id', [req.user.id], (aErr, aRows) => {
+            res.json(aRows || []);
+          });
+        });
+        return;
+      }
+      res.json(rows || []);
+    }
   );
 });
 
