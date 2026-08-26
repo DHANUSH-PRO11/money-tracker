@@ -80,9 +80,14 @@ async function logout() {
     console.warn('Supabase signOut error:', e);
   }
 
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  localStorage.removeItem('activePage');
+  // Clear all auth items from localStorage
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith('sb-') || key === 'token' || key === 'user' || key === 'activePage')) {
+      localStorage.removeItem(key);
+    }
+  }
+
   window.location.href = '/login.html';
 }
 

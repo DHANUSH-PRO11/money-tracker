@@ -355,15 +355,22 @@ body {
 
       if (supUrl && supKey && window.supabase) {
         supabaseAuthClient = window.supabase.createClient(supUrl, supKey);
-        const { data: { session }, error } = await supabaseAuthClient.auth.getSession();
-        if (session && session.user) {
-          await handleGoogleSession(session.user);
-        }
-        supabaseAuthClient.auth.onAuthStateChange(async (event, session) => {
-          if (event === 'SIGNED_IN' && session?.user) {
+
+        const isOAuthReturn = window.location.hash.includes('access_token') || 
+                              window.location.hash.includes('error') || 
+                              window.location.search.includes('code=');
+
+        if (isOAuthReturn) {
+          const { data: { session }, error } = await supabaseAuthClient.auth.getSession();
+          if (session && session.user) {
             await handleGoogleSession(session.user);
           }
-        });
+          supabaseAuthClient.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+              await handleGoogleSession(session.user);
+            }
+          });
+        }
       }
     } catch (err) {
       console.warn('Could not load Supabase auth config:', err);

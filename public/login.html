@@ -330,11 +330,6 @@ body {
   let supabaseAuthClient = null;
   let isGoogleAuthProcessing = false;
 
-  // Immediately redirect if token already exists
-  if (localStorage.getItem('token')) {
-    window.location.replace('/index.html');
-  }
-
   // Initialize Supabase OAuth
   async function initSupabase() {
     try {
@@ -354,17 +349,23 @@ body {
       if (supUrl && supKey && window.supabase) {
         supabaseAuthClient = window.supabase.createClient(supUrl, supKey);
 
-        // Check if returning from Google OAuth redirect
-        const { data: { session }, error } = await supabaseAuthClient.auth.getSession();
-        if (session && session.user) {
-          await handleGoogleSession(session.user);
-        }
+        // ONLY trigger Google login if URL contains OAuth redirect parameters
+        const isOAuthReturn = window.location.hash.includes('access_token') || 
+                              window.location.hash.includes('error') || 
+                              window.location.search.includes('code=');
 
-        supabaseAuthClient.auth.onAuthStateChange(async (event, session) => {
-          if (event === 'SIGNED_IN' && session?.user) {
+        if (isOAuthReturn) {
+          const { data: { session }, error } = await supabaseAuthClient.auth.getSession();
+          if (session && session.user) {
             await handleGoogleSession(session.user);
           }
-        });
+
+          supabaseAuthClient.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_IN' && session?.user) {
+              await handleGoogleSession(session.user);
+            }
+          });
+        }
       }
     } catch (err) {
       console.warn('Could not load Supabase auth config:', err);
