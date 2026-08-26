@@ -334,24 +334,41 @@ function ensureUserDataset(db, userId, callback) {
 
   const parsedTxns = parseDataset();
 
-  // Check how many transactions exist for this user
-  db.get(
-    'SELECT count(t.id) as count FROM transactions t JOIN accounts a ON t.account_id = a.id WHERE a.user_id = ?',
-    [userId],
-    (err, row) => {
-      if (err) {
-        console.error('Error checking transactions for user:', err);
-        return callback && callback(err);
-      }
+  // First ensure default categories exist
+  const defaultCategories = [
+    { name: 'Food & Dining', color: '#ff6b6b', icon: '🍔' },
+    { name: 'Transportation', color: '#4dabf7', icon: '🚗' },
+    { name: 'Shopping', color: '#f06595', icon: '🛍️' },
+    { name: 'Healthcare', color: '#51cf66', icon: '💊' },
+    { name: 'Bills & Utilities', color: '#ffd43b', icon: '⚡' },
+    { name: 'Salary & Income', color: '#20c997', icon: '💰' },
+    { name: 'Education', color: '#845ef7', icon: '📚' },
+    { name: 'Other', color: '#868e96', icon: '📌' }
+  ];
 
-      // If user already has the full latest dataset, no need to re-seed
-      if (row && row.count >= parsedTxns.length) {
-        return callback && callback(null, row.count);
-      }
+  db.serialize(() => {
+    // 1. Ensure categories exist
+    defaultCategories.forEach(cat => {
+      db.run('INSERT OR IGNORE INTO categories (name, color, icon) VALUES (?, ?, ?)', [cat.name, cat.color, cat.icon]);
+    });
 
-      console.log(`🌱 Seeding ${parsedTxns.length}-item MoneyFlow dataset for user ID ${userId}...`);
+    // 2. Check if user already has transactions
+    db.get(
+      'SELECT count(t.id) as count FROM transactions t JOIN accounts a ON t.account_id = a.id WHERE a.user_id = ?',
+      [userId],
+      (err, row) => {
+        if (err) {
+          console.error('Error checking transactions for user:', err);
+          return callback && callback(err);
+        }
 
-      db.serialize(() => {
+        // If user already has the full latest dataset, return
+        if (row && row.count >= parsedTxns.length) {
+          return callback && callback(null, row.count);
+        }
+
+        console.log(`🌱 Seeding ${parsedTxns.length}-item MoneyFlow dataset for user ID ${userId}...`);
+
         // Clean empty unused default accounts
         db.run(
           "DELETE FROM accounts WHERE user_id = ? AND name NOT IN ('GPAY', 'CASH', 'FANPAY')",
@@ -380,8 +397,12 @@ function ensureUserDataset(db, userId, callback) {
         });
 
         function insertTransactions() {
-          const accIds = Object.values(accountMap);
-          db.run(`DELETE FROM transactions WHERE account_id IN (${accIds.join(',')})`, (delErr) => {
+          const accIds = Object.values(accountMap).filter(Boolean);
+          const deleteQuery = accIds.length > 0 
+            ? `DELETE FROM transactions WHERE account_id IN (${accIds.map(() => '?').join(',')})`
+            : null;
+
+          const executeInsert = () => {
             db.all('SELECT id, name FROM categories', (catErr, cats) => {
               const categories = cats || [];
               const stmt = db.prepare('INSERT INTO transactions (date, account_id, category_id, reason, amount, type) VALUES (?, ?, ?, ?, ?, ?)');
@@ -400,11 +421,17 @@ function ensureUserDataset(db, userId, callback) {
                 if (callback) callback(finErr, parsedTxns.length);
               });
             });
-          });
+          };
+
+          if (deleteQuery) {
+            db.run(deleteQuery, accIds, executeInsert);
+          } else {
+            executeInsert();
+          }
         }
-      });
-    }
-  );
+      }
+    );
+  });
 }
 
 module.exports = { ensureUserDataset, parseDataset, RAW_DATA };

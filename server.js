@@ -46,8 +46,22 @@ function authenticateToken(req, res, next) {
 // Auto-seed middleware for Dhanush user to ensure full dataset exists
 function ensureDhanushData(req, res, next) {
   if (req.user && req.user.email && req.user.email.toLowerCase().includes('dhanush')) {
-    ensureUserDataset(db, req.user.id, () => {
-      next();
+    const email = req.user.email.toLowerCase().trim();
+    db.get('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?', [email], (uErr, userRow) => {
+      if (userRow) {
+        req.user.id = userRow.id;
+        ensureUserDataset(db, userRow.id, () => next());
+      } else {
+        db.run(
+          'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
+          [req.user.name || 'DHANUSH G', req.user.email, 'oauth_placeholder'],
+          function (insErr) {
+            const newId = this.lastID || req.user.id;
+            req.user.id = newId;
+            ensureUserDataset(db, newId, () => next());
+          }
+        );
+      }
     });
   } else {
     next();
@@ -787,7 +801,7 @@ app.delete('/api/transactions/:id', authenticateToken, (req, res) => {
 // ─── BUDGETS ──────────────────────────────────────────────────────────────────
 
 // Get budgets for current user
-app.get('/api/budgets', authenticateToken, (req, res) => {
+app.get('/api/budgets', authenticateToken, ensureDhanushData, (req, res) => {
   const query = `
     SELECT b.*, c.name as category_name, c.color as category_color, c.icon as category_icon
     FROM budgets b
