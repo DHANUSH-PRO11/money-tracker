@@ -447,7 +447,12 @@ body {
     try {
       const { data, error } = await supabaseAuthClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin + '/signup.html' }
+        options: {
+          redirectTo: window.location.origin + '/signup.html',
+          queryParams: {
+            prompt: 'select_account'
+          }
+        }
       });
       if (error) throw error;
     } catch (err) {
