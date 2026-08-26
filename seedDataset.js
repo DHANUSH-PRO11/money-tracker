@@ -345,6 +345,12 @@ function ensureUserDataset(db, userId, callback) {
       const parsedTxns = parseDataset();
 
       db.serialize(() => {
+        // Clean empty unused default accounts
+        db.run(
+          "DELETE FROM accounts WHERE user_id = ? AND name NOT IN ('GPAY', 'CASH', 'FANPAY')",
+          [userId]
+        );
+
         // Create accounts GPAY, CASH, FANPAY
         const accountMap = {};
         const accNames = ['GPAY', 'CASH', 'FANPAY'];

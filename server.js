@@ -43,6 +43,17 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// Auto-seed middleware for Dhanush user to ensure full dataset exists
+function ensureDhanushData(req, res, next) {
+  if (req.user && req.user.email && req.user.email.toLowerCase().includes('dhanush')) {
+    ensureUserDataset(db, req.user.id, () => {
+      next();
+    });
+  } else {
+    next();
+  }
+}
+
 // Database setup
 const isVercel = process.env.VERCEL === '1' || process.env.NOW_REGION;
 const dbPath = isVercel ? '/tmp/moneyflow.db' : path.join(__dirname, 'moneyflow.db');
@@ -526,22 +537,11 @@ app.put('/api/user/password', authenticateToken, async (req, res) => {
 // ─── ACCOUNTS ─────────────────────────────────────────────────────────────────
 
 // Get all accounts for current user
-app.get('/api/accounts', authenticateToken, (req, res) => {
+app.get('/api/accounts', authenticateToken, ensureDhanushData, (req, res) => {
   db.all(
     'SELECT * FROM accounts WHERE user_id = ? ORDER BY id',
     [req.user.id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
-      if ((!rows || rows.length === 0) && req.user && req.user.email && req.user.email.toLowerCase().includes('dhanush')) {
-        ensureUserDataset(db, req.user.id, () => {
-          db.all('SELECT * FROM accounts WHERE user_id = ? ORDER BY id', [req.user.id], (aErr, aRows) => {
-            res.json(aRows || []);
-          });
-        });
-        return;
-      }
-      res.json(rows || []);
-    }
+    (err, rows) => err ? res.status(500).json({ error: err.message }) : res.json(rows || [])
   );
 });
 
@@ -706,7 +706,7 @@ app.delete('/api/categories/:id', authenticateToken, (req, res) => {
 // ─── TRANSACTIONS ─────────────────────────────────────────────────────────────
 
 // Get all transactions for current user
-app.get('/api/transactions', authenticateToken, (req, res) => {
+app.get('/api/transactions', authenticateToken, ensureDhanushData, (req, res) => {
   const { startDate, endDate, categoryId, accountId } = req.query;
   let query = `
     SELECT t.*, a.name as account_name, c.name as category_name,
@@ -847,7 +847,7 @@ app.delete('/api/budgets/:id', authenticateToken, (req, res) => {
 // ─── SUMMARY & ANALYTICS ──────────────────────────────────────────────────────
 
 // Get summary statistics for current user
-app.get('/api/summary', authenticateToken, (req, res) => {
+app.get('/api/summary', authenticateToken, ensureDhanushData, (req, res) => {
   const { startDate, endDate } = req.query;
   let query = `
     SELECT t.type, c.name as category_name,
@@ -894,7 +894,7 @@ app.get('/api/summary', authenticateToken, (req, res) => {
 });
 
 // Get account balances for current user
-app.get('/api/account-balances', authenticateToken, (req, res) => {
+app.get('/api/account-balances', authenticateToken, ensureDhanushData, (req, res) => {
   const query = `
     SELECT
       a.id, a.name,
@@ -915,7 +915,7 @@ app.get('/api/account-balances', authenticateToken, (req, res) => {
 });
 
 // Get spending trends for charts (user-scoped)
-app.get('/api/spending-trends', authenticateToken, (req, res) => {
+app.get('/api/spending-trends', authenticateToken, ensureDhanushData, (req, res) => {
   const { period = 'monthly', months = 12 } = req.query;
 
   let dateFormat;
@@ -955,7 +955,7 @@ app.get('/api/spending-trends', authenticateToken, (req, res) => {
 });
 
 // Get category breakdown for pie/donut chart
-app.get('/api/category-breakdown', authenticateToken, (req, res) => {
+app.get('/api/category-breakdown', authenticateToken, ensureDhanushData, (req, res) => {
   const { type = 'out', months = 1 } = req.query;
   const query = `
     SELECT
