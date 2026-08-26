@@ -351,28 +351,52 @@ app.post('/api/auth/google', async (req, res) => {
         [cleanName, cleanEmail, hashedPassword],
         function (insertErr) {
           if (insertErr) {
-            console.error('Error creating Google user:', insertErr);
-            return res.status(500).json({ error: 'Failed to create user account' });
+            // Handle race condition if concurrent request already inserted the user
+            db.get('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?', [cleanEmail], (findErr, existingUser) => {
+              if (existingUser) {
+                const token = jwt.sign(
+                  { id: existingUser.id, email: existingUser.email, name: existingUser.name },
+                  JWT_SECRET,
+                  { expiresIn: '7d' }
+                );
+                return res.json({
+                  message: 'Login successful',
+                  token,
+                  user: { id: existingUser.id, name: existingUser.name, email: existingUser.email }
+                });
+              }
+              console.error('Error creating Google user:', insertErr);
+              return res.status(500).json({ error: 'Failed to create user account' });
+            });
+            return;
           }
 
           const userId = this.lastID;
 
           // Provision default accounts for new user
           const defaultAccounts = ['Cash', 'Bank / GPay', 'Card'];
+          let completed = 0;
+          const respond = () => {
+            const token = jwt.sign(
+              { id: userId, email: cleanEmail, name: cleanName },
+              JWT_SECRET,
+              { expiresIn: '7d' }
+            );
+
+            res.status(201).json({
+              message: 'User registered and logged in with Google',
+              token,
+              user: { id: userId, name: cleanName, email: cleanEmail }
+            });
+          };
+
           defaultAccounts.forEach(accName => {
-            db.run('INSERT OR IGNORE INTO accounts (name, user_id) VALUES (?, ?)', [accName, userId]);
-          });
-
-          const token = jwt.sign(
-            { id: userId, email: cleanEmail, name: cleanName },
-            JWT_SECRET,
-            { expiresIn: '7d' }
-          );
-
-          res.status(201).json({
-            message: 'User registered and logged in with Google',
-            token,
-            user: { id: userId, name: cleanName, email: cleanEmail }
+            db.run('INSERT OR IGNORE INTO accounts (name, user_id) VALUES (?, ?)', [accName, userId], () => {
+              completed++;
+              if (completed === defaultAccounts.length) {
+                respond();
+              }
+            });
           });
         }
       );
