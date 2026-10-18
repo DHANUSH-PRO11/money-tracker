@@ -238,8 +238,13 @@ body {
 <div class="bg-dots"></div>
 
 <div class="wrapper">
+  <div style="margin-bottom: 16px; text-align: left;">
+    <a href="landing.html" style="color: var(--muted); text-decoration: none; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px; transition: color 0.2s;">
+      ← Back to Homepage
+    </a>
+  </div>
   <div class="brand">
-    <div class="brand-logo">₹ MoneyFlow</div>
+    <a href="landing.html" class="brand-logo" style="text-decoration:none;">₹ MoneyFlow</a>
     <div class="brand-tagline">Start tracking your finances for free</div>
   </div>
 
@@ -574,7 +579,38 @@ body {
     }
   }
 
-  window.addEventListener('DOMContentLoaded', initSupabase);
+  // Check if user already has an active session
+  function checkExistingSession() {
+    const token = localStorage.getItem('token');
+    const userStr = localStorage.getItem('user');
+    const isOAuthReturn = window.location.hash.includes('access_token') || 
+                          window.location.hash.includes('error') || 
+                          window.location.search.includes('code=');
+    if (token && !isOAuthReturn) {
+      let userName = 'User';
+      if (userStr) {
+        try { userName = JSON.parse(userStr).name || 'User'; } catch (e) {}
+      }
+      const msgEl = document.getElementById('message');
+      if (msgEl) {
+        msgEl.innerHTML = `
+          <div class="success-msg" style="margin-bottom:16px; border-left:4px solid var(--green);">
+            👋 You are already signed in as <strong>${userName}</strong>.<br>
+            <div style="margin-top:8px; display:flex; gap:12px; align-items:center;">
+              <a href="/index.html" style="color:#ffffff; font-weight:700; text-decoration:underline;">Open Dashboard →</a>
+              <span style="opacity:0.4;">|</span>
+              <a href="javascript:void(0)" onclick="localStorage.removeItem('token');localStorage.removeItem('user');window.location.reload();" style="color:var(--muted); text-decoration:underline; font-size:0.85rem;">Sign out / Switch</a>
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    initSupabase();
+    checkExistingSession();
+  });
 </script>
 </body>
 </html>

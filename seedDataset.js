@@ -362,8 +362,8 @@ function ensureUserDataset(db, userId, callback) {
           return callback && callback(err);
         }
 
-        // If user already has the full latest dataset, return
-        if (row && row.count >= parsedTxns.length) {
+        // If user already has transactions, preserve existing data and do not re-seed
+        if (row && row.count > 0) {
           return callback && callback(null, row.count);
         }
 

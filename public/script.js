@@ -7,15 +7,20 @@
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const API_BASE = window.location.origin + '/api';
 
-let accounts    = [];
-let txns        = [];
-let budgets     = [];
-let categories  = [];
-let curFilter   = 'all';
-let curType     = 'out';
-let charts      = {};
-let activePage  = localStorage.getItem('activePage') || 'home';
-let dateRangeDays = 30; // default filter for dashboard
+let accounts       = [];
+let txns           = [];
+let budgets        = [];
+let categories     = [];
+let savingsGoals   = [];
+let recurringBills = [];
+let curFilter      = 'all';
+let curType        = 'out';
+let charts         = {};
+let activePage     = localStorage.getItem('activePage') || 'home';
+let dateRangeDays  = 30; // default filter for dashboard
+let currentPage    = 1;
+let pageSize       = 25;
+let pendingCSVRows = [];
 
 // ─── NUMBER FORMATTER ─────────────────────────────────────────────────────────
 
@@ -58,7 +63,7 @@ function loadTheme() {
 function checkAuth() {
   const token = localStorage.getItem('token');
   if (!token) {
-    window.location.href = '/login.html';
+    window.location.href = '/landing.html';
     return false;
   }
   return true;
@@ -345,9 +350,11 @@ async function go(page) {
   const mobTab = document.getElementById('m-' + page);
   if (mobTab) mobTab.classList.add('on');
 
-  // Show floating calculator only on dashboard
+  // Show floating calculator on home and dashboard
   const floatCalc = document.getElementById('floating-calculator');
-  floatCalc.style.display = page === 'dash' ? 'block' : 'none';
+  if (floatCalc) {
+    floatCalc.style.display = (page === 'dash' || page === 'home') ? 'block' : 'none';
+  }
 
   if (page === 'home')    drawHomeRecent();
   if (page === 'dash')    drawDash();
@@ -480,6 +487,9 @@ async function drawDash() {
     netEl.className   = summary.net_balance >= 0 ? 'positive' : 'negative';
     document.getElementById('s-cnt').textContent = summary.total_transactions;
 
+    // Load actionable insights and bill reminders
+    loadInsights();
+
     drawTable();
   } catch (e) {
     console.error('Dashboard error:', e);
@@ -489,6 +499,7 @@ async function drawDash() {
 function applyDateRangeFilter() {
   const val = document.getElementById('date-range-filter').value;
   dateRangeDays = val === 'all' ? null : parseInt(val);
+  currentPage = 1;
   drawTable();
 }
 
@@ -496,20 +507,46 @@ function filt(val, btn) {
   curFilter = val;
   document.querySelectorAll('.fbtn').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
+  currentPage = 1;
+  drawTable();
+}
+
+function changePageLimit(val) {
+  pageSize = val === 'all' ? 'all' : parseInt(val, 10);
+  currentPage = 1;
+  drawTable();
+}
+
+function prevPage() {
+  if (currentPage > 1) {
+    currentPage--;
+    drawTable();
+  }
+}
+
+function nextPage() {
+  currentPage++;
   drawTable();
 }
 
 function drawTable() {
-  const tbody    = document.getElementById('tbody');
-  const empty    = document.getElementById('empty');
-  const srch     = document.getElementById('srch');
-  const catFilter = document.getElementById('cat-filter');
+  const tbody      = document.getElementById('tbody');
+  const empty      = document.getElementById('empty');
+  const srch       = document.getElementById('srch');
+  const catFilter  = document.getElementById('cat-filter');
+  const typeFilter = document.getElementById('type-filter');
+  const pgBar      = document.getElementById('pagination-bar');
+  const pgInfo     = document.getElementById('pg-info');
+  const pgPrev     = document.getElementById('pg-prev');
+  const pgNext     = document.getElementById('pg-next');
+
   if (!tbody || !empty || !srch || !catFilter) return;
 
-  const srchVal    = srch.value.toLowerCase();
-  const catVal     = catFilter.value;
-  const now        = new Date();
-  const cutoff     = dateRangeDays
+  const srchVal = srch.value.toLowerCase().trim();
+  const catVal  = catFilter.value;
+  const typeVal = typeFilter ? typeFilter.value : 'all';
+  const now     = new Date();
+  const cutoff  = dateRangeDays
     ? new Date(now.getTime() - dateRangeDays * 86400000).toISOString().slice(0, 10)
     : null;
 
@@ -520,13 +557,44 @@ function drawTable() {
     const matchCat     = !catVal || t.category_id == catVal;
     const matchAccount = curFilter === 'all' || t.account_id == curFilter;
     const matchDate    = !cutoff || t.date >= cutoff;
-    return matchSearch && matchCat && matchAccount && matchDate;
+
+    let matchType = true;
+    if (typeVal === 'in') matchType = t.type === 'in' && !t.is_transfer;
+    else if (typeVal === 'out') matchType = t.type === 'out' && !t.is_transfer;
+    else if (typeVal === 'transfer') matchType = Boolean(t.is_transfer);
+
+    return matchSearch && matchCat && matchAccount && matchDate && matchType;
   });
 
-  if (!rows.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    if (pgBar) pgBar.style.display = 'none';
+    return;
+  }
   empty.style.display = 'none';
+  if (pgBar) pgBar.style.display = 'flex';
 
-  tbody.innerHTML = rows.map(t => {
+  // Pagination calculation
+  let paginatedRows = rows;
+  if (pageSize !== 'all') {
+    const totalPages = Math.ceil(rows.length / pageSize) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    const startIdx = (currentPage - 1) * pageSize;
+    paginatedRows = rows.slice(startIdx, startIdx + pageSize);
+
+    if (pgInfo) pgInfo.textContent = `Page ${currentPage} of ${totalPages} (${rows.length} total)`;
+    if (pgPrev) pgPrev.disabled = currentPage <= 1;
+    if (pgNext) pgNext.disabled = currentPage >= totalPages;
+  } else {
+    if (pgInfo) pgInfo.textContent = `All ${rows.length} entries`;
+    if (pgPrev) pgPrev.disabled = true;
+    if (pgNext) pgNext.disabled = true;
+  }
+
+  tbody.innerHTML = paginatedRows.map(t => {
     const d   = new Date(t.date + 'T00:00:00');
     const day = DAYS[d.getDay()];
     const acc = accounts.find(a => a.id === t.account_id);
@@ -534,17 +602,116 @@ function drawTable() {
     const catLabel = t.category_icon
       ? `${t.category_icon} ${escHtml(t.category_name)}`
       : (t.category_name ? escHtml(t.category_name) : '<span style="color:var(--muted)">—</span>');
+
+    const accountBadge = t.is_transfer
+      ? `<span class="badge b0" style="display:inline-flex;align-items:center;gap:4px;">${escHtml(t.account_name || 'Account')} ➔ ${escHtml(t.transfer_account_name || 'Transfer')}</span>`
+      : `<span class="badge b${idx % 4}">${acc ? escHtml(acc.name) : '?'}</span>`;
+
+    const typeBadge = t.is_transfer
+      ? '<span class="badge-transfer">⇄ Transfer</span>'
+      : (t.type === 'in' ? '<span class="tin">IN</span>' : '<span class="tout">OUT</span>');
+
     return `<tr>
       <td class="dt">${t.date}</td>
-      <td class="dy">${day.slice(0,3)}</td>
-      <td><span class="badge b${idx % 4}">${acc ? escHtml(acc.name) : '?'}</span></td>
+      <td class="dy">${day ? day.slice(0,3) : ''}</td>
+      <td>${accountBadge}</td>
       <td class="cat-badge">${catLabel}</td>
       <td title="${escHtml(t.reason)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t.reason)}</td>
-      <td>${t.type === 'in' ? '<span class="tin">IN</span>' : '<span class="tout">OUT</span>'}</td>
+      <td>${typeBadge}</td>
       <td class="amt ${t.type === 'in' ? 'gi' : 'ri'}">${t.type === 'in' ? '+' : '-'}${fmt(t.amount)}</td>
-      <td><button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete">🗑️</button></td>
+      <td style="white-space:nowrap">
+        <button class="xbtn" onclick="openEditTxnModal(${t.id})" title="Edit Transaction" style="margin-right:6px;">✏️</button>
+        <button class="xbtn" onclick="deleteEntry(${t.id})" title="Delete">🗑️</button>
+      </td>
     </tr>`;
   }).join('');
+}
+
+let curEditType = 'out';
+
+function pickEditType(t) {
+  curEditType = t;
+  const outBtn = document.getElementById('edit-tp-out');
+  const inBtn  = document.getElementById('edit-tp-in');
+  if (outBtn) outBtn.className = 'topt' + (t === 'out' ? ' out' : '');
+  if (inBtn)  inBtn.className  = 'topt' + (t === 'in'  ? ' in'  : '');
+}
+
+function openEditTxnModal(id) {
+  const t = txns.find(item => item.id === id);
+  if (!t) return;
+
+  fillCategorySelect();
+  fillAccSelect();
+
+  document.getElementById('edit-txn-id').value     = t.id;
+  document.getElementById('edit-txn-date').value   = t.date;
+  document.getElementById('edit-txn-reason').value = t.reason;
+  document.getElementById('edit-txn-amt').value    = t.amount;
+  document.getElementById('edit-txn-acc').value    = t.account_id;
+  document.getElementById('edit-txn-cat').value    = t.category_id || '';
+
+  pickEditType(t.type || 'out');
+  document.getElementById('edit-txn-modal').classList.add('show');
+}
+
+function closeEditTxnModal() {
+  document.getElementById('edit-txn-modal').classList.remove('show');
+}
+
+async function saveEditedTxn() {
+  const id   = parseInt(document.getElementById('edit-txn-id').value);
+  const date = document.getElementById('edit-txn-date').value;
+  const aid  = parseInt(document.getElementById('edit-txn-acc').value);
+  const cid  = document.getElementById('edit-txn-cat').value ? parseInt(document.getElementById('edit-txn-cat').value) : null;
+  const rsn  = document.getElementById('edit-txn-reason').value.trim();
+  const amt  = parseFloat(document.getElementById('edit-txn-amt').value);
+
+  if (!date || !aid || !rsn || isNaN(amt) || amt <= 0) {
+    showToast('⚠️ Please fill all required fields correctly', true);
+    return;
+  }
+
+  try {
+    await apiCall(`/transactions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        date,
+        account_id: aid,
+        category_id: cid,
+        reason: rsn,
+        amount: amt,
+        type: curEditType
+      })
+    });
+
+    const idx = txns.findIndex(item => item.id === id);
+    if (idx !== -1) {
+      const cat = categories.find(c => c.id === cid);
+      const acc = accounts.find(a => a.id === aid);
+      txns[idx] = {
+        ...txns[idx],
+        date,
+        account_id: aid,
+        account_name: acc ? acc.name : '',
+        category_id: cid,
+        category_name: cat ? cat.name : null,
+        category_icon: cat ? cat.icon : null,
+        category_color: cat ? cat.color : null,
+        reason: rsn,
+        amount: amt,
+        type: curEditType
+      };
+    }
+
+    closeEditTxnModal();
+    drawDash();
+    drawHomeRecent();
+    refreshNav();
+    showToast('✅ Transaction updated successfully!');
+  } catch (err) {
+    console.error('Update txn error:', err);
+  }
 }
 
 async function deleteEntry(id) {
@@ -803,59 +970,61 @@ async function loadBudgets() {
 async function showBudgetsPage() {
   try {
     const summary = await apiCall('/summary');
-    await loadBudgets();
+    await Promise.all([loadBudgets(), loadGoals(), loadRecurring()]);
 
     const grid = document.getElementById('budget-grid');
-    if (!grid) return;
+    if (grid) {
+      if (!budgets.length) {
+        grid.innerHTML = `
+          <div class="budget-empty">
+            <div class="ico">🎯</div>
+            <div>No budgets set yet.<br>Click <strong>+ Set Budget</strong> to start tracking.</div>
+          </div>`;
+      } else {
+        grid.innerHTML = budgets.map(b => {
+          let spent = 0;
+          if (summary.categories?.[b.category_name]) {
+            spent = summary.categories[b.category_name].out || 0;
+          }
+          const pct       = Math.min(100, Math.round((spent / b.amount) * 100));
+          const remaining = b.amount - spent;
+          let barColor    = '#10b981';
+          if (pct > 90) barColor = '#f43f5e';
+          else if (pct > 70) barColor = '#f59e0b';
 
-    if (!budgets.length) {
-      grid.innerHTML = `
-        <div class="budget-empty">
-          <div class="ico">🎯</div>
-          <div>No budgets set yet.<br>Click <strong>+ Set Budget</strong> to start tracking.</div>
-        </div>`;
-      return;
+          return `
+          <div class="acc-card">
+            <div class="acc-name-row">
+              <div style="display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif;font-weight:700;font-size:1rem">
+                <span>${b.category_icon || '📌'}</span> ${escHtml(b.category_name || 'Unknown')}
+              </div>
+              <button class="xbtn" onclick="deleteBudget(${b.id})" title="Delete">🗑️</button>
+            </div>
+            <div style="font-size:1.3rem;font-weight:800;margin:10px 0;font-family:'Outfit',sans-serif">
+              ${fmt(spent)} <span style="font-size:0.9rem;color:var(--muted);font-weight:500">/ ${fmt(b.amount)}</span>
+            </div>
+            <div class="budget-progress">
+              <div class="budget-progress-fill" style="width:${pct}%;background:${barColor}"></div>
+            </div>
+            <div class="acc-sub" style="display:flex;justify-content:space-between;margin-top:4px">
+              <span>${pct}% used</span>
+              <span style="color:${remaining < 0 ? 'var(--red)' : 'var(--green)'}">
+                ${fmt(Math.abs(remaining))} ${remaining < 0 ? 'over budget' : 'remaining'}
+              </span>
+            </div>
+            <button onclick="editBudget(${b.id}, ${b.category_id}, ${b.amount})"
+              style="margin-top:14px;width:100%;padding:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif;transition:0.25s"
+              onmouseover="this.style.background='rgba(255,255,255,0.08)'"
+              onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+              Edit
+            </button>
+          </div>`;
+        }).join('');
+      }
     }
 
-    grid.innerHTML = budgets.map(b => {
-      let spent = 0;
-      if (summary.categories?.[b.category_name]) {
-        spent = summary.categories[b.category_name].out || 0;
-      }
-      const pct       = Math.min(100, Math.round((spent / b.amount) * 100));
-      const remaining = b.amount - spent;
-      let barColor    = '#10b981';
-      if (pct > 90) barColor = '#f43f5e';
-      else if (pct > 70) barColor = '#f59e0b';
-
-      return `
-      <div class="acc-card">
-        <div class="acc-name-row">
-          <div style="display:flex;align-items:center;gap:8px;font-family:'Outfit',sans-serif;font-weight:700;font-size:1rem">
-            <span>${b.category_icon || '📌'}</span> ${escHtml(b.category_name || 'Unknown')}
-          </div>
-          <button class="xbtn" onclick="deleteBudget(${b.id})" title="Delete">🗑️</button>
-        </div>
-        <div style="font-size:1.3rem;font-weight:800;margin:10px 0;font-family:'Outfit',sans-serif">
-          ${fmt(spent)} <span style="font-size:0.9rem;color:var(--muted);font-weight:500">/ ${fmt(b.amount)}</span>
-        </div>
-        <div class="budget-progress">
-          <div class="budget-progress-fill" style="width:${pct}%;background:${barColor}"></div>
-        </div>
-        <div class="acc-sub" style="display:flex;justify-content:space-between;margin-top:4px">
-          <span>${pct}% used</span>
-          <span style="color:${remaining < 0 ? 'var(--red)' : 'var(--green)'}">
-            ${fmt(Math.abs(remaining))} ${remaining < 0 ? 'over budget' : 'remaining'}
-          </span>
-        </div>
-        <button onclick="editBudget(${b.id}, ${b.category_id}, ${b.amount})"
-          style="margin-top:14px;width:100%;padding:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif;transition:0.25s"
-          onmouseover="this.style.background='rgba(255,255,255,0.08)'"
-          onmouseout="this.style.background='rgba(255,255,255,0.04)'">
-          Edit
-        </button>
-      </div>`;
-    }).join('');
+    drawGoals();
+    drawRecurring();
   } catch (e) {
     console.error('Budgets page error:', e);
   }
@@ -928,17 +1097,21 @@ async function loadCategories() {
 
 function fillCategorySelect() {
   const sel = document.getElementById('f-cat');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">No Category</option>' +
+  const editSel = document.getElementById('edit-txn-cat');
+  const opts = '<option value="">No Category</option>' +
     categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
+  if (sel) sel.innerHTML = opts;
+  if (editSel) editSel.innerHTML = opts;
 }
 
 function fillAccSelect() {
   const sel = document.getElementById('f-acc');
-  if (!sel) return;
-  sel.innerHTML = accounts.length
+  const editSel = document.getElementById('edit-txn-acc');
+  const opts = accounts.length
     ? accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('')
     : '<option value="">-- No accounts (Create in Manage) --</option>';
+  if (sel) sel.innerHTML = opts;
+  if (editSel) editSel.innerHTML = opts;
 }
 
 function populateCategoryFilter() {
@@ -1087,6 +1260,21 @@ function showExportModal() {
   document.getElementById('export-end-date').value   = today.toISOString().split('T')[0];
   document.getElementById('export-modal').classList.add('show');
 }
+function setExportRange(days) {
+  const today = new Date();
+  document.getElementById('export-end-date').value = today.toISOString().split('T')[0];
+  if (days === 'all') {
+    let earliest = '2024-01-01';
+    if (txns.length > 0) {
+      const dates = txns.map(t => t.date).sort();
+      earliest = dates[0] || '2024-01-01';
+    }
+    document.getElementById('export-start-date').value = earliest;
+  } else {
+    const past = new Date(today.getTime() - days * 86400000);
+    document.getElementById('export-start-date').value = past.toISOString().split('T')[0];
+  }
+}
 function closeExportModal() {
   document.getElementById('export-modal').classList.remove('show');
 }
@@ -1095,11 +1283,13 @@ async function exportTransactions() {
   const end    = document.getElementById('export-end-date').value;
   if (!start || !end) { showToast('⚠️ Please select both dates', true); return; }
 
-  const token = localStorage.getItem('token');
-  const url   = `${API_BASE}/export/csv?start=${start}&end=${end}&token=${encodeURIComponent(token)}`;
+  const format = document.querySelector('input[name="export-format"]:checked')?.value || 'csv';
+  const token  = localStorage.getItem('token');
+  const endpoint = format === 'json' ? '/export/json' : '/export/csv';
+  const url    = `${API_BASE}${endpoint}?start=${start}&end=${end}&token=${encodeURIComponent(token)}`;
   window.open(url, '_blank');
   closeExportModal();
-  showToast('📥 CSV export started!');
+  showToast(`📥 ${format.toUpperCase()} export started!`);
 }
 
 // ─── TOAST ────────────────────────────────────────────────────────────────────
@@ -1122,15 +1312,19 @@ async function loadData() {
   showLoading();
 
   try {
-    const [accountsData, txnsData, budgetsData] = await Promise.all([
+    const [accountsData, txnsData, budgetsData, goalsData, recurringData] = await Promise.all([
       apiCall('/accounts'),
       apiCall('/transactions'),
-      apiCall('/budgets')
+      apiCall('/budgets'),
+      apiCall('/goals').catch(() => []),
+      apiCall('/recurring').catch(() => [])
     ]);
 
-    accounts = accountsData  || [];
-    txns     = txnsData      || [];
-    budgets  = budgetsData   || [];
+    accounts       = accountsData  || [];
+    txns           = txnsData      || [];
+    budgets        = budgetsData   || [];
+    savingsGoals   = goalsData     || [];
+    recurringBills = recurringData || [];
 
     await Promise.all([loadCategories(), loadUserProfile()]);
     fillAccSelect();
@@ -1142,6 +1336,548 @@ async function loadData() {
   } finally {
     hideLoading();
   }
+}
+
+// ─── TRANSFERS ────────────────────────────────────────────────────────────────
+
+function showTransferModal() {
+  const fromSel = document.getElementById('transfer-from-acc');
+  const toSel   = document.getElementById('transfer-to-acc');
+  if (!fromSel || !toSel) return;
+
+  const opts = accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+  fromSel.innerHTML = opts;
+  toSel.innerHTML   = opts;
+
+  if (accounts.length > 1) {
+    toSel.selectedIndex = 1;
+  }
+
+  document.getElementById('transfer-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('transfer-amt').value = '';
+  document.getElementById('transfer-reason').value = '';
+  document.getElementById('transfer-modal').classList.add('show');
+}
+
+function closeTransferModal() {
+  document.getElementById('transfer-modal').classList.remove('show');
+}
+
+async function executeTransfer() {
+  const fromId = parseInt(document.getElementById('transfer-from-acc').value, 10);
+  const toId   = parseInt(document.getElementById('transfer-to-acc').value, 10);
+  const amt    = parseFloat(document.getElementById('transfer-amt').value);
+  const date   = document.getElementById('transfer-date').value;
+  const reason = document.getElementById('transfer-reason').value.trim();
+
+  if (!fromId || !toId) {
+    showToast('⚠️ Please select both source and destination accounts', true);
+    return;
+  }
+  if (fromId === toId) {
+    showToast('⚠️ Source and destination accounts must be different', true);
+    return;
+  }
+  if (isNaN(amt) || amt <= 0) {
+    showToast('⚠️ Transfer amount must be greater than 0', true);
+    return;
+  }
+  if (!date) {
+    showToast('⚠️ Please select a transfer date', true);
+    return;
+  }
+
+  try {
+    showLoading();
+    await apiCall('/transfers', {
+      method: 'POST',
+      body: JSON.stringify({
+        from_account_id: fromId,
+        to_account_id: toId,
+        amount: amt,
+        date,
+        reason: reason || 'Account Transfer'
+      })
+    });
+
+    closeTransferModal();
+    await loadData();
+    showToast('✅ Transfer completed successfully!');
+  } catch (err) {
+    console.error('Transfer error:', err);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── ACTIONABLE INSIGHTS & REMINDERS ──────────────────────────────────────────
+
+async function loadInsights() {
+  const banner = document.getElementById('insights-banner');
+  if (!banner) return;
+
+  try {
+    const data = await apiCall('/insights');
+    const bills = data.upcoming_bills || [];
+    const alerts = data.budget_alerts || [];
+
+    if (!bills.length && !alerts.length) {
+      banner.style.display = 'none';
+      return;
+    }
+
+    let itemsHtml = '';
+
+    bills.forEach(b => {
+      itemsHtml += `
+        <div class="insight-item">
+          <div>
+            <strong>📅 Due Soon:</strong> ${escHtml(b.reason)} (${fmt(b.amount)}) — due on <strong>${b.next_date}</strong> (${escHtml(b.account_name)})
+          </div>
+          <button class="insight-btn" onclick="processRecurringDirect(${b.id}, '${escHtml(b.reason)}')">⚡ Process / Pay</button>
+        </div>`;
+    });
+
+    alerts.forEach(a => {
+      itemsHtml += `
+        <div class="insight-item warning">
+          <div>
+            <strong>⚠️ Budget Warning:</strong> ${a.category_icon || '📌'} ${escHtml(a.category_name)} is at <strong>${a.percent}%</strong> of budget (${fmt(a.spent)} / ${fmt(a.budget_limit)})
+          </div>
+        </div>`;
+    });
+
+    banner.innerHTML = `
+      <div class="insights-header">
+        <span>💡 Actionable Insights & Reminders</span>
+        <span style="font-size:0.75rem;font-weight:normal;color:var(--text-muted);">${bills.length} bill(s) due, ${alerts.length} budget warning(s)</span>
+      </div>
+      ${itemsHtml}
+    `;
+    banner.style.display = 'flex';
+  } catch (e) {
+    console.warn('Insights fetch error:', e);
+  }
+}
+
+async function processRecurringDirect(id, name) {
+  if (!confirm(`Process and log payment for "${name}" now?`)) return;
+  try {
+    showLoading();
+    await apiCall(`/recurring/${id}/process`, { method: 'POST' });
+    showToast('✅ Recurring payment processed and schedule updated!');
+    await loadData();
+  } catch (e) {
+    console.error(e);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── SAVINGS GOALS ────────────────────────────────────────────────────────────
+
+async function loadGoals() {
+  try {
+    savingsGoals = await apiCall('/goals');
+  } catch (e) {
+    savingsGoals = [];
+  }
+}
+
+function drawGoals() {
+  const grid = document.getElementById('goals-grid');
+  if (!grid) return;
+
+  if (!savingsGoals.length) {
+    grid.innerHTML = `
+      <div class="budget-empty">
+        <div class="ico">🏆</div>
+        <div>No savings goals created yet.<br>Click <strong>+ New Goal</strong> to set a target!</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = savingsGoals.map(g => {
+    const cur = g.current_amount || 0;
+    const tgt = g.target_amount;
+    const pct = Math.min(100, Math.round((cur / tgt) * 100));
+    const remaining = Math.max(0, tgt - cur);
+
+    return `
+      <div class="goal-card">
+        <div class="goal-header">
+          <div class="goal-title">${escHtml(g.name)}</div>
+          <button class="xbtn" onclick="deleteGoal(${g.id})" title="Delete Goal">🗑️</button>
+        </div>
+        <div class="goal-amounts">
+          <div>Saved: <strong>${fmt(cur)}</strong></div>
+          <div>Target: <strong>${fmt(tgt)}</strong></div>
+        </div>
+        <div class="goal-progress">
+          <div class="goal-progress-fill" style="width:${pct}%;background:${g.color || '#10b981'}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-muted);">
+          <span>${pct}% achieved</span>
+          <span>${remaining > 0 ? fmt(remaining) + ' remaining' : '🎉 Goal Reached!'}</span>
+        </div>
+        <div class="goal-actions">
+          <button class="fbtn" onclick="showContributeModal(${g.id}, '${escHtml(g.name)}')" style="flex:1;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);padding:8px 12px;font-weight:600;">
+            + Contribute
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function showAddGoalModal() {
+  document.getElementById('goal-id').value = '';
+  document.getElementById('goal-name').value = '';
+  document.getElementById('goal-target-amt').value = '';
+  document.getElementById('goal-current-amt').value = '0';
+  document.getElementById('goal-target-date').value = '';
+  document.getElementById('goal-color').value = '#10b981';
+  document.getElementById('goal-modal-title').textContent = '🏆 New Savings Goal';
+  document.getElementById('goal-modal').classList.add('show');
+}
+
+function closeGoalModal() {
+  document.getElementById('goal-modal').classList.remove('show');
+}
+
+async function saveGoal() {
+  const name = document.getElementById('goal-name').value.trim();
+  const tgt  = parseFloat(document.getElementById('goal-target-amt').value);
+  const cur  = parseFloat(document.getElementById('goal-current-amt').value) || 0;
+  const date = document.getElementById('goal-target-date').value;
+  const col  = document.getElementById('goal-color').value;
+
+  if (!name || isNaN(tgt) || tgt <= 0) {
+    showToast('⚠️ Please enter a goal name and valid target amount', true);
+    return;
+  }
+
+  try {
+    await apiCall('/goals', {
+      method: 'POST',
+      body: JSON.stringify({ name, target_amount: tgt, current_amount: cur, target_date: date, color: col })
+    });
+    closeGoalModal();
+    await loadGoals();
+    drawGoals();
+    showToast('🏆 Savings goal created!');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function deleteGoal(id) {
+  if (!confirm('Delete this savings goal?')) return;
+  try {
+    await apiCall(`/goals/${id}`, { method: 'DELETE' });
+    showToast('🗑️ Savings goal deleted');
+    await loadGoals();
+    drawGoals();
+  } catch (e) { console.error(e); }
+}
+
+function showContributeModal(id, name) {
+  document.getElementById('contrib-goal-id').value = id;
+  document.getElementById('contrib-goal-title').innerHTML = `Contributing towards: <strong>${name}</strong>`;
+  document.getElementById('contrib-amt').value = '';
+
+  const accSel = document.getElementById('contrib-acc');
+  accSel.innerHTML = '<option value="">Do not log account transaction</option>' +
+    accounts.map(a => `<option value="${a.id}">Deduct from ${escHtml(a.name)}</option>`).join('');
+
+  document.getElementById('goal-contribute-modal').classList.add('show');
+}
+
+function closeGoalContributeModal() {
+  document.getElementById('goal-contribute-modal').classList.remove('show');
+}
+
+async function submitGoalContribution() {
+  const id  = parseInt(document.getElementById('contrib-goal-id').value, 10);
+  const amt = parseFloat(document.getElementById('contrib-amt').value);
+  const aid = document.getElementById('contrib-acc').value ? parseInt(document.getElementById('contrib-acc').value, 10) : null;
+
+  if (isNaN(amt) || amt <= 0) {
+    showToast('⚠️ Please enter a valid contribution amount', true);
+    return;
+  }
+
+  try {
+    showLoading();
+    await apiCall(`/goals/${id}/contribute`, {
+      method: 'POST',
+      body: JSON.stringify({ amount: amt, account_id: aid })
+    });
+    closeGoalContributeModal();
+    await loadGoals();
+    drawGoals();
+    if (aid) await loadData();
+    showToast('💰 Contribution added!');
+  } catch (e) {
+    console.error(e);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── RECURRING TRANSACTIONS & BILLS ──────────────────────────────────────────
+
+async function loadRecurring() {
+  try {
+    recurringBills = await apiCall('/recurring');
+  } catch (e) {
+    recurringBills = [];
+  }
+}
+
+function drawRecurring() {
+  const list = document.getElementById('recurring-list');
+  if (!list) return;
+
+  if (!recurringBills.length) {
+    list.innerHTML = `
+      <div class="budget-empty">
+        <div class="ico">🔄</div>
+        <div>No recurring bills setup yet.<br>Track subscriptions, rent, and utility bills automatically.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = recurringBills.map(r => `
+    <div class="recurring-card">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="font-size:1.6rem;">${r.category_icon || (r.type === 'in' ? '💰' : '💡')}</div>
+        <div>
+          <div style="font-weight:700;color:var(--text);font-size:0.95rem;">${escHtml(r.reason)}</div>
+          <div style="font-size:0.8rem;color:var(--text-muted);display:flex;gap:8px;margin-top:2px;">
+            <span>${escHtml(r.account_name)}</span> ·
+            <span style="text-transform:capitalize;">${r.frequency}</span> ·
+            <span>Next: <strong>${r.next_date}</strong></span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <strong style="color:${r.type === 'in' ? 'var(--green)' : 'var(--red)'};font-size:1.05rem;">
+          ${r.type === 'in' ? '+' : '-'}${fmt(r.amount)}
+        </strong>
+        <button class="insight-btn" onclick="processRecurringDirect(${r.id}, '${escHtml(r.reason)}')" title="Log payment and advance date">
+          ⚡ Pay / Process
+        </button>
+        <button class="xbtn" onclick="deleteRecurring(${r.id})" title="Delete">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showAddRecurringModal() {
+  const accSel = document.getElementById('rec-account');
+  const catSel = document.getElementById('rec-category');
+
+  accSel.innerHTML = accounts.map(a => `<option value="${a.id}">${escHtml(a.name)}</option>`).join('');
+  catSel.innerHTML = '<option value="">No Category</option>' +
+    categories.map(c => `<option value="${c.id}">${c.icon} ${escHtml(c.name)}</option>`).join('');
+
+  document.getElementById('recurring-id').value = '';
+  document.getElementById('rec-reason').value = '';
+  document.getElementById('rec-amt').value = '';
+  document.getElementById('rec-next-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('recurring-modal').classList.add('show');
+}
+
+function closeRecurringModal() {
+  document.getElementById('recurring-modal').classList.remove('show');
+}
+
+async function saveRecurring() {
+  const aid  = parseInt(document.getElementById('rec-account').value, 10);
+  const cid  = document.getElementById('rec-category').value ? parseInt(document.getElementById('rec-category').value, 10) : null;
+  const amt  = parseFloat(document.getElementById('rec-amt').value);
+  const type = document.getElementById('rec-type').value;
+  const freq = document.getElementById('rec-frequency').value;
+  const next = document.getElementById('rec-next-date').value;
+  const rsn  = document.getElementById('rec-reason').value.trim();
+
+  if (!aid || !rsn || isNaN(amt) || amt <= 0 || !next) {
+    showToast('⚠️ Please fill all required recurring fields', true);
+    return;
+  }
+
+  try {
+    await apiCall('/recurring', {
+      method: 'POST',
+      body: JSON.stringify({ account_id: aid, category_id: cid, amount: amt, type, frequency: freq, next_date: next, reason: rsn })
+    });
+    closeRecurringModal();
+    await loadRecurring();
+    drawRecurring();
+    showToast('🔄 Recurring bill scheduled!');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function deleteRecurring(id) {
+  if (!confirm('Delete this recurring bill?')) return;
+  try {
+    await apiCall(`/recurring/${id}`, { method: 'DELETE' });
+    showToast('🗑️ Recurring schedule deleted');
+    await loadRecurring();
+    drawRecurring();
+  } catch (e) { console.error(e); }
+}
+
+// ─── CSV IMPORT WITH PREVIEW & DUPLICATE DETECTION ────────────────────────────
+
+function showImportModal() {
+  resetImportModal();
+  document.getElementById('import-modal').classList.add('show');
+}
+
+function closeImportModal() {
+  document.getElementById('import-modal').classList.remove('show');
+}
+
+function resetImportModal() {
+  document.getElementById('import-step-upload').style.display = 'block';
+  document.getElementById('import-step-preview').style.display = 'none';
+  document.getElementById('btn-execute-import').style.display = 'none';
+  document.getElementById('csv-file-input').value = '';
+  pendingCSVRows = [];
+}
+
+function handleCSVFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (evt) => {
+    const csvText = evt.target.result;
+    try {
+      showLoading();
+      const res = await apiCall('/import/csv/preview', {
+        method: 'POST',
+        body: JSON.stringify({ csvData: csvText })
+      });
+
+      pendingCSVRows = res.rows || [];
+      document.getElementById('import-stats').innerHTML =
+        `Found <strong>${res.total_rows}</strong> records: ` +
+        `<span style="color:var(--green)">${res.valid_rows} new</span>, ` +
+        `<span style="color:#f59e0b">${res.duplicate_rows} duplicates</span>` +
+        (res.invalid_rows ? `, <span style="color:var(--red)">${res.invalid_rows} invalid</span>` : '');
+
+      const tbody = document.getElementById('import-preview-tbody');
+      tbody.innerHTML = pendingCSVRows.slice(0, 50).map(r => `
+        <tr>
+          <td>
+            ${r.is_duplicate ? '<span class="import-tag-duplicate">Duplicate</span>' : (r.is_valid ? '<span class="import-tag-valid">Ready</span>' : '<span style="color:var(--red);font-size:0.75rem;">Invalid</span>')}
+          </td>
+          <td>${r.date}</td>
+          <td>${escHtml(r.account_name)}</td>
+          <td>${escHtml(r.category_name)}</td>
+          <td>${escHtml(r.reason)}</td>
+          <td>${fmt(r.amount)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('import-step-upload').style.display = 'none';
+      document.getElementById('import-step-preview').style.display = 'block';
+      document.getElementById('btn-execute-import').style.display = 'inline-block';
+      document.getElementById('btn-execute-import').textContent = `Import ${res.valid_rows} Records`;
+    } catch (err) {
+      console.error(err);
+    } finally {
+      hideLoading();
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function executeCSVImport() {
+  if (!pendingCSVRows.length) return;
+  const skipDuplicates = document.getElementById('skip-duplicates-check').checked;
+
+  try {
+    showLoading();
+    const res = await apiCall('/import/csv', {
+      method: 'POST',
+      body: JSON.stringify({ rows: pendingCSVRows, skip_duplicates: skipDuplicates })
+    });
+
+    closeImportModal();
+    await loadData();
+    showToast(`✅ Imported ${res.imported} transactions successfully!`);
+  } catch (err) {
+    console.error('Import error:', err);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ─── VALIDATED JSON BACKUP & RESTORE ──────────────────────────────────────────
+
+async function downloadBackupJSON() {
+  try {
+    showLoading();
+    const data = await apiCall('/backup');
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `moneyflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('💾 Backup file downloaded successfully!');
+  } catch (e) {
+    console.error('Backup download error:', e);
+  } finally {
+    hideLoading();
+  }
+}
+
+function handleRestoreFile(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (evt) => {
+    try {
+      const backupData = JSON.parse(evt.target.result);
+      if (!backupData || backupData.schema_version !== '1.0') {
+        showToast('⚠️ Unsupported or invalid backup schema version', true);
+        return;
+      }
+
+      const txCount = (backupData.transactions || []).length;
+      if (!confirm(`Restore backup containing ${txCount} transactions from ${backupData.exported_at?.slice(0,10) || 'file'}?`)) {
+        return;
+      }
+
+      showLoading();
+      const res = await apiCall('/backup/restore', {
+        method: 'POST',
+        body: JSON.stringify(backupData)
+      });
+
+      await loadData();
+      showToast(`✅ Restored ${res.restored?.transactions || 0} transactions successfully!`);
+    } catch (err) {
+      console.error('Restore error:', err);
+      showToast('❌ Failed to parse or restore backup: ' + err.message, true);
+    } finally {
+      hideLoading();
+      e.target.value = '';
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ─── CALCULATOR (modal) ───────────────────────────────────────────────────────
